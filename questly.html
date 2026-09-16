@@ -507,20 +507,55 @@
 
 <div class="levelup-toast" id="levelToast">Level up!</div>
 
-<script>
-(function(){
-  // ---------- In-memory state (no localStorage in artifacts) ----------
+<script type="module">
+import { initializeApp } from "https://www.gstatic.com/firebasejs/12.19.0/firebase-app.js";
+import { getAuth, signInAnonymously } from "https://www.gstatic.com/firebasejs/12.19.0/firebase-auth.js";
+import { getFirestore, doc, getDoc, setDoc } from "https://www.gstatic.com/firebasejs/12.19.0/firebase-firestore.js";
+
+// ponytail: web API keys are public by design; Firestore rules are the real guard.
+const app = initializeApp({
+  apiKey: "AIzaSyACp5uAVW7qgz37fC4KBK3W9ujRJkygdg0",
+  authDomain: "questly-7f3a2.firebaseapp.com",
+  projectId: "questly-7f3a2",
+  storageBucket: "questly-7f3a2.firebasestorage.app",
+  messagingSenderId: "76941771778",
+  appId: "1:76941771778:web:f6b8ce393cab367711d31b"
+});
+const db = getFirestore(app);
+
+(async function(){
+  // ponytail: anonymous auth now; Google sign-in later is linkWithPopup on this same uid.
+  const { user } = await signInAnonymously(getAuth(app));
+  const ref = doc(db, 'users', user.uid);
+
+  function today(){ return new Date().toISOString().slice(0, 10); }
+
   let state = {
     xp: 0,
     totalXp: 0,
     totalDone: 0,
     doneToday: 0,
     streak: 0,
+    day: today(),
     quests: [
       { id: cryptoId(), name: "Add your first real quest", xp: 10, done: false },
       { id: cryptoId(), name: "Check one off to earn XP", xp: 25, done: false },
     ]
   };
+
+  const snap = await getDoc(ref);
+  if (snap.exists()) state = Object.assign(state, snap.data());
+
+  // doneToday/streak only mean anything once state persists across days.
+  function rollDay(){
+    const t = today();
+    if (state.day === t) return;
+    const yesterday = new Date(Date.now() - 864e5).toISOString().slice(0, 10);
+    if (state.day !== yesterday || state.doneToday === 0) state.streak = 0;
+    state.doneToday = 0;
+    state.day = t;
+  }
+  rollDay();
 
   function cryptoId(){
     return 'q_' + Math.random().toString(36).slice(2, 10);
@@ -580,6 +615,8 @@
   let lastLevel = 1;
 
   function render(){
+    rollDay();
+    setDoc(ref, state).catch(e => console.error('save failed', e));
     const lvl = levelFromXp(state.totalXp);
 
     document.getElementById('levelNum').textContent = lvl.level;
@@ -693,7 +730,7 @@
 
   resetBtn.addEventListener('click', () => {
     if (!confirm('Reset all progress? This clears your level, XP, streak, and quests.')) return;
-    state = { xp:0, totalXp:0, totalDone:0, doneToday:0, streak:0, quests: [] };
+    state = { xp:0, totalXp:0, totalDone:0, doneToday:0, streak:0, day: today(), quests: [] };
     lastLevel = 1;
     render();
   });
