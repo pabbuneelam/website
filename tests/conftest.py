@@ -13,7 +13,9 @@ DEFAULTS = dict(
 
 
 def box(**kw) -> BoxScore:
-    """A box score with everything zeroed except what the test cares about."""
+    """A box score with everything zeroed except what the test cares about.
+    Advanced fields stay None unless asked for, which is exactly how a
+    below-GOAT data source behaves."""
     return BoxScore(**{**DEFAULTS, **kw})
 
 

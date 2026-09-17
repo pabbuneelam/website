@@ -2,102 +2,78 @@
 
 *Working title. The name lives in `slate/name.py` and nowhere else.*
 
-Nightly NBA fantasy. You get a fixed points budget and spread it across
-`(player, category)` picks — points, true shooting, assists minus turnovers,
-corner threes. Picks score on how far the player beat **his own projection**,
-ranked against everyone who played that night.
+Build a custom basketball player out of tonight's real NBA performances, then
+use the players you create to build and manage a roster.
 
-See [SLATE.md](SLATE.md) for the product design. This repo currently holds step
-one of the build order: the scoring engine and a thin HTTP layer. No UI yet.
+You don't draft a player — you pick a different NBA player for each **quality**
+of one created player. Curry for Outside Shooting, someone else for Rebounding.
+What you get depends entirely on how each of them plays *that night*. Your
+card's contract is the **average of their six real salaries**, so a 94 OVR at
+$14M is a better asset than a 96 at $50M.
+
+See [SLATE.md](SLATE.md) for the full design. This repo currently holds the
+daily loop: attribute engine → player card. No UI yet.
 
 ## Run it
 
 ```sh
 python -m venv .venv && .venv/bin/pip install -e ".[dev]"
 
-.venv/bin/python -m pytest                        # 67 tests
-.venv/bin/python -m slate replay 2025-11-14       # resolve the stored slate
-.venv/bin/uvicorn slate.api:app --reload          # http://127.0.0.1:8000/docs
+.venv/bin/python -m pytest                     # 79 tests
+.venv/bin/python -m slate build 2025-11-14     # build a card from the fixture
+.venv/bin/uvicorn slate.api:app --reload       # http://127.0.0.1:8000/docs
 ```
 
-## How scoring works
-
 ```
-actual − projection            = residual
-residual / dispersion          = z
-percentile of z among tonight  = multiplier   (0..1, always)
-allocated × multiplier × boost = score
-```
+  Slate — created 2025-11-14
+  ──────────────────────────────────────────────
+  OVR 96                       $27.8M/yr
 
-Percentiles are bounded by construction, so a weak projector makes the game
-noisy but can never blow up the scale — and because allocation is a scoring
-weight rather than a wallet, nobody can farm a mispriced category.
-
-A metric returning `None` — guardrail failed, or the data source has no
-play-by-play — drops the player from that category's pool *and* scores the pick
-zero. That is what stops a 1-for-1 night from winning true shooting.
-
-## Deployed
-
-Production: **https://slate-theta-two.vercel.app** — `/docs` for the OpenAPI UI.
-
-Vercel resolves the entrypoint from `[tool.vercel] entrypoint = "slate.api:app"`
-in `pyproject.toml`; there is no `app.py` shim. `vercel.json` trims tests and
-tooling from the bundle but **must not exclude `slate/fixtures/`** — that JSON
-is runtime data, not test data.
-
-Read endpoints work now. Writes return **503 until Firestore is configured**, and
-that is deliberate: serverless instances are stateless and scale to zero, so a
-submit and its resolve can land on different ones. The in-memory store is not
-merely non-durable there, it silently loses lineups. Failing loudly beats
-behaving randomly.
-
-```sh
-vercel env add SLATE_FIREBASE_PROJECT production              # questly-7f3a2
-vercel env add GOOGLE_APPLICATION_CREDENTIALS_JSON production # paste the whole key JSON
-vercel deploy --prod
+  Outside Shooting     95   NYK Player 5       $3.5M
+  Finishing            97   BOS Player 5       $3.5M
+  Playmaking           97   BOS Player 1      $55.0M
+  Rebounding           97   NYK Player 2      $38.0M
+  Perimeter Defense    97   DEN Player 4      $12.0M
+  Interior Defense     93   NYK Player 1      $55.0M
+  ──────────────────────────────────────────────
+  value: 3.45 OVR per $M/yr
 ```
 
-## Persistence
+## How a rating happens
 
-Defaults to an in-memory store, so tests and Replay need no credentials. Point
-it at Firebase and lineups plus nightly residuals become durable:
-
-```sh
-export SLATE_FIREBASE_PROJECT=questly-7f3a2
-export GOOGLE_APPLICATION_CREDENTIALS=~/.secrets/questly-sa.json
-# or, where there is no filesystem to park a key file on:
-# export GOOGLE_APPLICATION_CREDENTIALS_JSON="$(cat ~/.secrets/questly-sa.json)"
-.venv/bin/uvicorn slate.api:app
-```
-
-`GET /health` reports which store is live, because a deploy that quietly fell
-back to memory loses every lineup on restart.
+Every attribute has the same shape — **one idea, six instances**:
 
 ```
-slates/{date}/lineups/{entrant}   one submitted lineup
-nights/{date}                     {residuals: {category_id: [z, ...]}}
+value  = what he produced
+       − what a league-average player produces on the same opportunities
+       × how hard those opportunities were   (contested share)
+
+rating = percentile of value among everyone who qualified tonight  ×  99
 ```
 
-That second collection is the point. The boost tuner holds its seed values
-until 20 nights of residual history exist, and nothing accumulates across a
-restart without it. Boosts for a night are computed from history *before* that
-night — a slate never tunes the multipliers it is itself scored under.
+There is **no prediction model anywhere**. Ratings are absolute quality
+tonight, not "did he beat his own average" — because a card joins a roster and
+eventually a simulator, so a 97 has to mean the performance was genuinely
+elite, not merely surprising. Stars rate well more often; the salary
+denominator is what balances that.
 
-Auth is a service account, so security rules are bypassed. Rules only start
-mattering when a browser reads these collections directly.
+Two consequences worth knowing:
+
+- **Rebounding is conversion, not volume.** 8 boards from 12 chances rates
+  above 12 from 30. Volume stats reward opportunity; this rewards the player.
+- A metric returning `None` — guardrail failed, or the data tier lacks the
+  field — drops the player from that attribute's pool *and* scores the pick 0.
+  That's what stops a 3-for-3 night from buying a 99.
 
 ## Layout
 
 | Path | What it is |
 |---|---|
-| `slate/catalog.py` | Categories as data. Adding one is a row plus a metric. |
-| `slate/metrics.py` | One pure function per metric, guardrails included. |
-| `slate/project.py` | `Projector` protocol + `BaselineProjector`. **The ML seam.** |
-| `slate/score.py` | Pools, residuals, percentiles, backups, validation. |
-| `slate/tune.py` | Self-tuning niche boosts, clamped and seeded. |
-| `slate/sources/` | `FixtureSource` today, `BallDontLieSource` stubbed. |
+| `slate/attributes.py` | The six attributes and their metrics. Add one here. |
+| `slate/score.py` | Pools, percentiles, ratings. |
+| `slate/card.py` | Six selections → OVR, contract, card. |
 | `slate/store.py` | `MemoryStore` (default) and `FirestoreStore`. |
+| `slate/sources/` | `FixtureSource` today, `BallDontLieSource` stubbed. |
 | `slate/api.py` | Five endpoints. |
 | `tools/make_fixture.py` | Regenerates the committed fixture. Seeded. |
 
@@ -109,15 +85,58 @@ Verified against the balldontlie docs:
 |---|---|---|
 | free | $0 | teams, players, games — **no player stats** |
 | ALL-STAR | $9.99/mo | + box scores, injuries |
-| GOAT | $39.99/mo | + play-by-play `coordinate_x/y`, advanced, odds, contracts |
+| GOAT | $39.99/mo | + advanced/tracking, matchups, play-by-play, odds, contracts |
 
-Every location category (corner, wing, left side, lobs) needs GOAT, so they ship
-declared but `enabled=False`. Play-by-play exists only from the 2025 season
-forward — points have years of history, corner threes have one.
+**GOAT is required.** Four of the six attributes need fields that exist only
+there: `rebound_chances_total`, `matchup_fg_pct`, `defended_at_rim_fg_pct`,
+`contested_fga`/`uncontested_fga`, `secondary_assists`.
+
+Not available at any price, and deliberately designed around: shot difficulty
+ratings, expected FG%, closest-defender distance, pull-up vs catch-and-shoot,
+potential assists, on/off. Contested share is the difficulty proxy that
+replaces them.
+
+There is a **48-hour GOAT trial** (5 req/min) — enough to pull one real slate
+and validate every attribute before subscribing.
 
 Nothing is paid for yet; everything runs on `slate/fixtures/2025-11-14.json`.
 
+## Deployed
+
+**https://slate-theta-two.vercel.app** — `/docs` for the OpenAPI UI.
+
+Vercel resolves the entrypoint from `[tool.vercel] entrypoint = "slate.api:app"`
+in `pyproject.toml`. `vercel.json` trims tests and tooling but **must not
+exclude `slate/fixtures/`** — that JSON is runtime data.
+
+Writes 503 without a durable store, deliberately: serverless instances are
+stateless, so a card written by one is invisible to the next. Failing loudly
+beats behaving randomly.
+
+```sh
+vercel env add SLATE_FIREBASE_PROJECT production
+vercel env add GOOGLE_APPLICATION_CREDENTIALS_JSON production   # MINIFIED to one line
+vercel deploy --prod
+```
+
+The credentials JSON **must be single-line**. A pretty-printed multi-line value
+breaks the build environment.
+
+## Persistence
+
+```sh
+export SLATE_FIREBASE_PROJECT=questly-7f3a2
+export GOOGLE_APPLICATION_CREDENTIALS=~/.secrets/questly-sa.json
+```
+
+```
+cards/{card_id}     one created player, id "{date}:{creator}"
+```
+
+A card carries a stable id and its creator from the moment it exists, because
+it outlives the roster it was made for — waived, claimed, signed, retired.
+
 ## Next
 
-The ML projector, live ingestion, draft/reveal screens, groups and ladders, and
-persistence. Each is its own milestone; none of them change `score.py`.
+Collection → roster + payroll cap → waivers and free agency → trades (players,
+build picks, cap space) → simulation. The economy layer is specced in SLATE.md.

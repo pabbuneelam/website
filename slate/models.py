@@ -33,14 +33,40 @@ class BoxScore:
     tov: int
     pf: int
     plus_minus: int
-    corner3m: int | None = None
-    wing3m: int | None = None
-    left_side_fgm: int | None = None
-    lobs: int | None = None
+    # --- annual salary, from the contracts endpoint (GOAT tier) -----------
+    salary: int | None = None
+
+    # --- advanced / tracking, all GOAT tier ------------------------------
+    # None below GOAT. Any attribute needing one of these returns None, which
+    # is the same path a guardrail failure takes.
+    rim_fgm: int | None = None
+    rim_fga: int | None = None
+    contested_fgm: int | None = None
+    contested_fga: int | None = None
+    uncontested_fgm: int | None = None
+    uncontested_fga: int | None = None
+    secondary_assists: int | None = None
+    free_throw_assists: int | None = None
+    rebound_chances_total: int | None = None
+    deflections: int | None = None
+    matchup_minutes: float | None = None
+    matchup_fgm: int | None = None
+    matchup_fga: int | None = None
+    defended_at_rim_fgm: int | None = None
+    defended_at_rim_fga: int | None = None
 
     @property
     def reb(self) -> int:
         return self.orb + self.drb
+
+    @property
+    def contested_share(self) -> float | None:
+        """Fraction of this player's shots that were contested. The closest
+        thing to shot difficulty that exists below Second Spectrum."""
+        if self.contested_fga is None or self.uncontested_fga is None:
+            return None
+        total = self.contested_fga + self.uncontested_fga
+        return self.contested_fga / total if total else None
 
     @property
     def played(self) -> bool:
@@ -56,43 +82,56 @@ class SlateGame:
 
 
 @dataclass(frozen=True)
-class Pick:
-    """One allocation. ``backup_player_id`` resolves at BACKUP_FACTOR if the
-    starter does not play."""
+class Selection:
+    """One attribute slot filled by one NBA player playing tonight."""
 
-    category_id: str
+    slot: str
     player_id: int
-    allocated: float
-    backup_player_id: int | None = None
 
 
 @dataclass(frozen=True)
-class Lineup:
-    entrant: str
-    picks: tuple[Pick, ...]
+class Build:
+    """A user's six selections for one night."""
+
+    creator: str
+    selections: tuple[Selection, ...]
 
 
 @dataclass(frozen=True)
-class ScoredPick:
-    category_id: str
+class Rating:
+    """One attribute of a created player, and the real performance behind it."""
+
+    slot: str
+    label: str
     player_id: int
-    scored_player_id: int  # differs from player_id when the backup was used
-    allocated: float
-    actual: float | None
-    projected: float | None
-    residual: float | None
-    z: float | None
-    multiplier: float
-    boost: float
-    factor: float  # 1.0, or BACKUP_FACTOR when the backup played
-    score: float
+    player_name: str
+    rating: int          # 0-99
+    value: float | None  # difficulty-adjusted production over league average
+    percentile: float
+    salary: int | None
     note: str = ""
 
 
 @dataclass(frozen=True)
-class Result:
-    entrant: str
-    total: float
-    picks: tuple[ScoredPick, ...] = field(default_factory=tuple)
+class Card:
+    """A created player. This is the artifact the whole game produces.
+
+    A card outlives the roster it was made for -- it can be waived, claimed,
+    signed and retired by other teams -- so it carries a stable id and records
+    who created it from the moment it exists.
+    """
+
+    card_id: str
+    creator: str
+    date: str
+    ovr: int
+    contract: int              # average annual salary of the players used
+    ratings: tuple[Rating, ...]
     void: bool = False
     void_reason: str = ""
+
+    @property
+    def value_per_million(self) -> float:
+        """OVR per $M/yr. The Moneyball number -- a 94 at $14M beats a 96 at $50M."""
+        millions = self.contract / 1_000_000
+        return self.ovr / millions if millions else 0.0

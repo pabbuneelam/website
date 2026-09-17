@@ -1,71 +1,61 @@
-"""Replay a stored slate end to end.
+"""Build a player from a stored slate.
 
-    python -m slate replay 2025-11-14
+    python -m slate build 2025-11-14
 """
 from __future__ import annotations
 
 import sys
 
-from . import catalog
-from .models import Lineup, Pick
+from . import attributes
+from .card import build_card
+from .models import Build, Selection
 from .name import APP_NAME
-from .project import BaselineProjector
-from .score import NightScorer
+from .score import NightRater
 from .sources import FixtureSource
-from .tune import BoostTuner, night_residuals
 
 
-def demo_lineup(night) -> Lineup:
-    """Allocate across the first few enabled categories, one player each."""
-    cats = [c for c in catalog.enabled()][:4]
-    players = [b.player_id for b in night.boxscores]
-    picks = tuple(
-        Pick(category_id=c.id, player_id=players[i], allocated=250.0,
-             backup_player_id=players[i + 10])
-        for i, c in enumerate(cats)
-    )
-    return Lineup(entrant="demo", picks=picks)
+def best_available(rater: NightRater) -> Build:
+    """Greedy demo build: take the top rater in each slot, skipping anyone
+    already used. Not optimal -- a real user is predicting, not hindsight
+    picking -- but it exercises the whole path."""
+    used: set[int] = set()
+    selections = []
+    for slot in attributes.SLOTS:
+        pool = rater.pool(slot)
+        ranked = sorted(pool.value.items(), key=lambda kv: kv[1], reverse=True)
+        for pid, _ in ranked:
+            if pid not in used:
+                used.add(pid)
+                selections.append(Selection(slot, pid))
+                break
+    return Build(creator="demo", selections=tuple(selections))
 
 
-def replay(date: str) -> int:
-    night = FixtureSource().load(date)
-    scorer = NightScorer(
-        night.boxscores, BaselineProjector(night.logs), night.date, night.games
-    )
-    result = scorer.score_lineup(demo_lineup(night))
-
-    print(f"{APP_NAME} — {date}")
-    if result.void:
-        print(f"  VOID: {result.void_reason}")
-        return 1
-
-    header = f"{'category':<12}{'player':>7}{'actual':>9}{'proj':>9}{'z':>7}{'pctile':>8}{'boost':>7}{'score':>9}"
-    print(header)
-    print("-" * len(header))
-    for p in result.picks:
-        actual = "-" if p.actual is None else f"{p.actual:.2f}"
-        proj = "-" if p.projected is None else f"{p.projected:.2f}"
-        z = "-" if p.z is None else f"{p.z:+.2f}"
-        print(
-            f"{p.category_id:<12}{p.scored_player_id:>7}{actual:>9}{proj:>9}"
-            f"{z:>7}{p.multiplier:>8.2f}{p.boost:>7.2f}{p.score:>9.1f}"
-            + (f"   ({p.note})" if p.note else "")
-        )
-    print("-" * len(header))
-    print(f"{'total':<12}{result.total:>50.1f}")
-
-    ids = [c.id for c in catalog.enabled()]
-    tuned = BoostTuner().boosts({k: [v] for k, v in night_residuals(scorer, ids).items()})
-    print(f"\nboosts after 1 night (seeds hold until 20): "
-          f"{ {k: tuned[k] for k in ids[:4]} }")
-    return 0
+def render(card) -> None:
+    print(f"\n  {APP_NAME} — created {card.date}")
+    print("  " + "─" * 46)
+    print(f"  OVR {card.ovr:<3}{'':22}${card.contract / 1_000_000:.1f}M/yr\n")
+    for r in card.ratings:
+        detail = r.note or f"{r.player_name}"
+        salary = f"${r.salary / 1_000_000:.1f}M" if r.salary else "—"
+        print(f"  {r.label:<20}{r.rating:>3}   {detail:<16}{salary:>8}")
+    print("  " + "─" * 46)
+    print(f"  value: {card.value_per_million:.2f} OVR per $M/yr\n")
 
 
 def main(argv: list[str]) -> int:
-    if len(argv) != 3 or argv[1] != "replay":
+    if len(argv) != 3 or argv[1] != "build":
         print(__doc__.strip())
         return 2
-    return replay(argv[2])
+    date = argv[2]
+    night = FixtureSource().load(date)
+    rater = NightRater(night.boxscores)
+    card = build_card(best_available(rater), rater, night.date)
+    if card.void:
+        print(f"VOID: {card.void_reason}")
+        return 1
+    render(card)
+    return 0
 
 
 if __name__ == "__main__":

@@ -14,8 +14,6 @@ class NightData:
     date: str
     games: tuple[SlateGame, ...]
     boxscores: tuple[BoxScore, ...]
-    # player_id -> [(season_offset, box)], most recent first. Feeds BaselineProjector.
-    logs: dict[int, list[tuple[int, BoxScore]]]
 
 
 class SlateSource(Protocol):

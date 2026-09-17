@@ -19,9 +19,9 @@ class FixtureSource:
         self.directory = Path(directory)
 
     def capabilities(self) -> frozenset[str]:
-        # The committed fixture carries play-by-play fields too, so the location
-        # categories can be exercised in tests without paying for GOAT.
-        return frozenset({"boxscore", "pbp"})
+        # The committed fixture carries advanced and tracking fields too, so
+        # every attribute can be exercised without paying for GOAT.
+        return frozenset({"boxscore", "pbp", "advanced"})
 
     def load(self, date: str) -> NightData:
         path = self.directory / f"{date}.json"
@@ -31,8 +31,4 @@ class FixtureSource:
 
         games = tuple(SlateGame(**g) for g in raw["games"])
         boxscores = tuple(_box(b) for b in raw["boxscores"])
-        logs = {
-            int(pid): [(int(e["season_offset"]), _box(e["box"])) for e in entries]
-            for pid, entries in raw.get("logs", {}).items()
-        }
-        return NightData(date=raw["date"], games=games, boxscores=boxscores, logs=logs)
+        return NightData(date=raw["date"], games=games, boxscores=boxscores)

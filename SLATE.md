@@ -1,141 +1,169 @@
-# Slate (working title)
+# Slate (working title) — NBA Player Builder
 
-**One line:** Nightly NBA fantasy where you back the stats nerds actually argue about, and get paid on how far your guy beat his own number.
+**One line:** Build the best basketball player you can out of tonight's NBA performances, then use the players you create to build and manage a championship roster.
 
 ---
 
 ## The pitch
 
-Fantasy basketball scores raw box score totals. Slate doesn't.
+You are not drafting an NBA player. You are picking a different NBA player to supply each **quality** of one custom player you create.
 
-- **You don't draft a player, you draft *what he does*.** Back Klay for shooting and you're scored on his true shooting tonight, not his rebounds.
-- **You're scored against the projection, not the box score.** A star hitting his usual 30 loses to a role player who blew past his 12. Stars stop being free wins; finding tonight's outlier is the whole skill.
-- **Niche categories pay more,** because they're harder to call. Corner threes pay more than points.
-- **Lineups are hidden until lock.** Everyone submits blind. The reveal is the show.
+- **Outside Shooting:** Curry
+- **Finishing:** someone else
+- **Playmaking:** someone else
+- …and so on
 
-It's fantasy for people who read Cleaning the Glass, but percentile scoring keeps it readable for anyone.
+What you actually receive depends entirely on how each of them plays *that night*. Curry hitting eight contested threes gives you elite Outside Shooting. Pick someone for defense who gets cooked, and your created player is a turnstile.
 
----
+Two things make it more than a novelty:
 
-## The nightly round
-
-1. **Slate opens.** Every player in tonight's games is listed with team and opponent. No stats shown.
-2. **Spend your budget.** You get a fixed number of points for the night. Spread them across up to 7 `(player, category)` picks — as lopsided as you like. A player can only fill one category, and a category can only be picked once.
-3. **Name backups.** Each pick gets a backup. If the starter doesn't play, the backup scores at 80%. The discount is deliberate: checking the injury report stays a skill, not a free hedge.
-4. **Lock at first tip.** Late scratches after lock count against you, same as real fantasy.
-5. **Reveal.** All lineups in the group go public. Scores update live as box scores come in.
-6. **Settle.** Final scores, group leaderboard updates, head-to-head result posted.
-
-The budget is a **scoring weight, not a wallet.** Nothing is won or lost from a balance and it resets every night. That's what keeps a half-trained projection model from being farmable — a weak model makes the game duller, never unfair.
+1. **Ratings measure quality, not fantasy points.** Two players shoot 6/12 from three; the one taking contested pull-ups rates higher than the one getting open catch-and-shoot looks.
+2. **Cost is the real contract.** Your card's salary is the *average* of the six real NBA salaries you used. That makes rookie deals and minimums the alpha, and turns every build into a value problem, not a star-picking problem.
 
 ---
 
-## Categories
+## Status
 
-Anything computable from a box score is free and explainable. Anything needing shot location costs money (see Data).
-
-| Tier | Categories |
+| | |
 |---|---|
-| **Basic** | Points, Rebounds, Assists, Steals, Blocks, Fewest turnovers |
-| **Combo** | Steals+blocks, Assists−turnovers, True shooting %, Plus/minus, Game Score |
-| **Location** *(not live yet)* | Corner threes, Wing threes, Left-side makes, Lobs finished |
+| ✅ **Built** | Attribute engine, ratings, OVR, contract, card, API, persistence |
+| ⬜ Next | Collection → roster + cap → waivers/FA → trades → simulation |
 
-Guardrails apply before anything is scored: true shooting needs 8 FGA, plus/minus needs 15 minutes. Fail one and you're not last in that category — you're **absent from it**, and the pick scores zero. That's what stops a 1-for-1 night from winning the shooting category.
-
-### Formulas
-
-- **TS%** = PTS / (2 × (FGA + 0.44 × FTA))
-- **Game Score** = PTS + 0.4×FG − 0.7×FGA − 0.4×(FTA − FT) + 0.7×ORB + 0.3×DRB + STL + 0.7×AST + 0.7×BLK − 0.4×PF − TOV
+No prediction model is needed anywhere in this design. See *Ratings*, below.
 
 ---
 
-## Scoring: percentile of residual
+## The six attributes
 
-12 rebounds and 62% TS aren't on the same scale, and neither are two players who were expected to do very different things. So:
+An initial version uses six, to keep a daily build quick. Each has a metric that exists in real data and a guardrail that keeps small samples out.
+
+| Attribute | Metric | Guardrail |
+|---|---|---|
+| Outside Shooting | 3P points added over league average, × difficulty | min 4 3PA |
+| Finishing | rim points added over league average, × difficulty | min 3 rim FGA |
+| Playmaking | AST + ½ secondary + ½ FT assists − turnovers | min 15 minutes |
+| Rebounding | boards over league-average conversion of the same chances | min 4 rebound chances |
+| Perimeter Defense | FGs prevented vs the man he guarded + deflections | min 10 matchup minutes |
+| Interior Defense | rim FGs prevented + blocks | min 3 rim FGA defended |
+
+**Rebounding is the clearest illustration of the whole design.** Twelve boards from thirty chances is a worse night than eight from twelve. Volume stats reward opportunity; this rewards the player.
+
+Later candidates: Midrange, Shot Creation, Off-Ball Movement, Screen Navigation, Decision Making. Each is a row in `slate/attributes.py` plus a metric function — the engine does not change.
+
+---
+
+## Ratings
 
 ```
-actual − projection             = residual      how much he beat his own number
-residual / dispersion           = z             normalised, so categories compare
-percentile of z among tonight   = multiplier    0 to 1, always
-allocated × multiplier × boost  = score
+value  = what he produced
+       − what a league-average player produces on the same opportunities
+       × how hard those opportunities were
+
+rating = percentile of value among everyone who qualified tonight  ×  99
+OVR    = mean of the six ratings
 ```
 
-Percentiles are bounded by construction, so a bad projection makes the night noisy but can never blow up the scale. The reveal reads naturally: *"Your shooter beat his projection by more than 94% of the league tonight."*
+One idea, six instances.
 
-A player is counted in his own pool, so a perfect night caps just under 1.0 rather than at it. That's deliberate — it keeps the multiplier honest on thin two-game slates.
+**Ratings are absolute quality tonight, not "did he beat his own average."** This is a deliberate choice against the obvious alternative. A card joins a roster and eventually a simulator, so a 97 has to mean the performance was genuinely elite — a 99 off a 3-for-3 night would poison everything downstream. Stars therefore rate well more often, exactly as they should: picking a star means paying for a higher probability of a good night, and **the salary denominator is the balancing mechanism, not the scoring**.
 
-### Niche boosts, self-tuning
+Percentiles are bounded by construction, so ratings compare across nights and across attributes with no tuning. A player is counted in his own pool, so a perfect night caps just under 99 — deliberate, because it keeps ratings honest on a thin two-game slate.
 
-Each category carries a boost. It starts as a hand-set seed and, once 20 nights of history exist, becomes the spread of that category's normalised residuals: **if the model can't call it, it pays more.** As the model learns a category, its boost falls back toward 1.
+A metric returning nothing — guardrail failed, or the data tier lacks the field — removes the player from that attribute's pool entirely *and* scores the pick zero.
 
-The known weakness is that noise and difficulty look identical from there, so a coin-flip category would otherwise claim the top multiplier. Three guards: residuals are normalised, the result is clamped to [1.0, 2.5], and seeds hold through cold start. The real fix is to change what's measured — once there's user data, retarget it from "hardest to predict" to "widest spread among entrants", which is much closer to skill.
+### Difficulty
 
----
+`contested_share` — the fraction of a player's shots that were contested — is the difficulty signal. Where it is absent it falls back to 1.0, neutral rather than zero, so an attribute degrades to plain efficiency instead of breaking.
 
-## Why people come back
-
-- **Two touchpoints a day:** draft in the afternoon, sweat the games at night.
-- **Weekly head-to-head.** Paired with one friend in the group, best cumulative score over the week.
-- **Monthly ladder** with tiers. Promotion and relegation so a bad week costs something.
-- **Takes.** Before lock you can publicly call one pick ("Klay cooks tonight"). Takes show on the reveal. Being loudly wrong is the loss condition, and it's free.
-- **Streaks** for consecutive nights with a valid lineup submitted, not for winning.
+Shot difficulty ratings, expected FG%, and closest-defender distance are Second Spectrum proprietary and not purchasable at any realistic price. The design works around them rather than pretending.
 
 ---
 
-## Modes
+## Contracts
 
-- **Open** (default): everyone allocates from the full slate, duplicates allowed. Casual.
-- **Snake**: turn-based, no duplicate players across the group. For groups that want it cutthroat.
-- **Replay**: run any past date. Used for the demo and for off-season play. **Working today.**
+The created player's contract is the **average annual salary** of the six players used.
+
+> $55M + $45M + $30M + $15M + $8M + $3M, over 6 = **$26M/year**
+>
+> **93 OVR · $26M/year · 3.58 OVR per $M**
+
+A player with no salary on file is excluded from the average rather than counted as free — otherwise missing data would masquerade as a bargain.
+
+---
+
+## The daily loop
+
+1. See tonight's games. Players are listed with team, opponent and salary — **no stats**.
+2. Fill six attribute slots. One player supplies one quality; nobody fills two.
+3. Selections lock at tip.
+4. Games happen.
+5. The engine rates each performance.
+6. You get a card: ratings, OVR, contract, and the real performances behind every number.
+7. The card joins your collection.
+
+---
+
+## The economy *(specced, not built)*
+
+### Collection and roster
+
+Cards persist. You build a starting five plus bench out of players you have created, under a team payroll limit.
+
+### Cap penalties
+
+Exceeding the cap is allowed but progressively punished — luxury tax, then apron levels, with restrictions on adding new players and reduced rewards. Over the cap is a strategic choice, not an invalid roster.
+
+### Waiving and dead cap
+
+Waiving retains **~20% of the contract as dead cap**. Waiving a $30M player frees $24M and leaves a $6M charge. Bad contracts have to be lived with or paid off.
+
+### Player lifecycle
+
+**Roster → Waivers → Free Agency → Retirement**
+
+A waived player enters a short waiver period where another team can claim the existing contract. Unclaimed, he enters free agency, and his asking price falls each day. Unsigned after ~30 days, he retires. This is a waiting game: hold out for a lower price and someone else may sign him first.
+
+Cards therefore outlive their creators' rosters, which is why a card carries a stable id and a recorded creator from the moment it is built.
+
+### Career history
+
+Original creator, date, the NBA players used, original contract, every team played for, free-agency spells, simulation stats, awards, retirement. A card created by one user can end up playing for several teams — persistent league history.
+
+### Tradeable assets
+
+1. **Created players**, with their contracts.
+2. **Future build picks** — the right to create a player on a given future NBA game day. Nights with more games are worth more, so this is a draft-pick economy without a draft.
+3. **Cap space** — temporary (+$10M for 15 days) or permanent (+$2M). Permanent must stay rare or the economy inflates.
+
+> **Team A gets:** 94 OVR player
+> **Team B gets:** 90 OVR player + Saturday build pick + $10M cap space for 15 days
+
+### Simulation *(last)*
+
+Possession-by-possession resolution using created players' attributes, with Monte Carlo runs behind a single official result. Then fit and chemistry — five high-usage scorers should underperform a balanced roster.
+
+This is deliberately last. It needs full rosters to mean anything, and a bad simulator would discredit good attribute work.
 
 ---
 
 ## Data
 
-Verified against the balldontlie docs:
-
 | Tier | Price | Coverage |
 |---|---|---|
-| free | $0 | teams, players, games — **no player stats at all** |
-| ALL-STAR | $9.99/mo | + per-game box scores, injuries |
-| GOAT | $39.99/mo | + play-by-play with `coordinate_x/y`, advanced stats, odds & props, contracts |
+| free | $0 | teams, players, games — **no player stats** |
+| ALL-STAR | $9.99/mo | + box scores, injuries |
+| GOAT | $39.99/mo | + advanced/tracking, matchups, play-by-play, odds, contracts |
 
-Consequences:
+**GOAT is required.** Four of six attributes depend on fields that exist only there. A 48-hour GOAT trial exists — one afternoon validates every attribute against a real slate before subscribing.
 
-- **The free tier cannot run the game.** Basic and combo categories need ALL-STAR at minimum.
-- **Every location category needs GOAT**, as does any betting-odds work. They ship declared but disabled, and flip on with a config change.
-- **Play-by-play only exists from the 2025 season forward.** The "lean on previous seasons with decay" plan has a hard floor for niche categories — points have years of history, corner threes have one.
-- **Contracts are a GOAT endpoint**, which retires the Spotrac scraping plan.
-- There's a **48-hour GOAT trial** (5 req/min). One afternoon of it pulls a real slate with coordinates — enough to build and validate the location categories before committing to a subscription.
-
-Nothing is paid for yet. Everything runs on a committed fixture.
+Nothing is paid for yet. Everything runs on a committed fixture with deliberately awkward rows.
 
 ---
 
 ## Open questions
 
-- **Does contract-as-cost come back?** The original pitch priced players by their real salary under a cap. The points budget replaced that mechanic, but contract-as-cost was the cross-sport hook and the reason rookie deals were the alpha. It could return as a *second* constraint layered on the budget. Undecided, deliberately.
-- Is plus/minus too noisy to feel skill-based, even normalised against its own projection?
-- Should backups be per pick or one global bench?
-- Budget of 1000 across up to 7 picks, minimum 50 per pick — all guesses, all need playtesting.
-- Is there a version for other sports? Percentile-of-residual works anywhere there's a box score and a projection.
-
----
-
-## Build order
-
-1. ~~**Scoring engine.**~~ **Done** — percentiles, guardrails, backups, boosts, over a committed fixture. See [README](README.md).
-2. **Draft screen.** Slate list, category picker, budget meter, backup picker.
-3. **Reveal screen.** Percentile bars per pick, lineup comparison, Takes.
-4. **Group + leaderboard.** Nightly, weekly H2H, monthly ladder.
-5. **Live data.** Swap the fixture for the API.
-6. **The model.** Opponent adjustment, similar-team clustering, injury context, market odds — all as new `Projector` implementations. Nothing downstream changes.
-
----
-
-## Demo plan
-
-The season starts late October. For an interview before then:
-
-- Ship in **Replay** mode: pick the date, allocate, lock, watch the round resolve in 30 seconds. *(The engine half of this works now.)*
-- Seed 3 to 4 fake group members with pre-built lineups so the reveal and leaderboard have something to show.
+- Is OVR a flat mean, or weighted by position once rosters exist?
+- Do build picks need an expiry, or can a hoarder bank a season of them?
+- Trades: player-for-player only, or is there a currency? A currency turns good predictors into farmers running a secondary market.
+- League-average constants (`LEAGUE_3P`, `LEAGUE_RIM`, …) are guesses until a real season is loaded.
+- Does one build per night per user hold, or do build picks make that variable?

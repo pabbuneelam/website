@@ -6,14 +6,18 @@ import os
 
 import pytest
 
-from slate.models import Lineup, Pick
+from slate.models import Card, Rating
 from slate.store import MemoryStore, _from_dict, _to_dict
 
-LINEUP = Lineup(
-    entrant="vrishin",
-    picks=(
-        Pick("PTS", 101, 300.0, backup_player_id=121),
-        Pick("AST_TO", 105, 400.0),
+CARD = Card(
+    card_id="2025-11-14:vrishin",
+    creator="vrishin",
+    date="2025-11-14",
+    ovr=93,
+    contract=26_000_000,
+    ratings=(
+        Rating("OUTSIDE", "Outside Shooting", 101, "Curry", 97, 12.4, 0.98, 55_000_000),
+        Rating("REBOUNDING", "Rebounding", 102, "Sabonis", 79, 1.2, 0.80, 30_000_000, note=""),
     ),
 )
 
@@ -24,58 +28,51 @@ def store(request):
     return request.param()
 
 
-def test_lineup_survives_a_round_trip_through_json():
-    """Picks are frozen dataclasses; the store has to flatten and rebuild them
-    without losing the optional backup."""
-    assert _from_dict(_to_dict(LINEUP)) == LINEUP
+def test_a_card_survives_a_round_trip_through_json():
+    """Ratings are nested frozen dataclasses; the store has to flatten and
+    rebuild them without losing the performance detail behind each number."""
+    assert _from_dict(_to_dict(CARD)) == CARD
 
 
-def test_backupless_pick_round_trips():
-    lu = Lineup(entrant="x", picks=(Pick("REB", 1, 100.0),))
-    assert _from_dict(_to_dict(lu)).picks[0].backup_player_id is None
+def test_saving_a_card_makes_it_readable_by_id(store):
+    store.save_card(CARD)
+    assert store.card(CARD.card_id) == CARD
 
 
-def test_saving_a_lineup_makes_it_readable(store):
-    store.save_lineup("2025-11-14", LINEUP)
-    assert store.lineups("2025-11-14") == [LINEUP]
+def test_unknown_card_is_none_not_an_error(store):
+    assert store.card("nope") is None
 
 
-def test_resubmitting_replaces_rather_than_duplicates(store):
-    """One lineup per entrant per night. Editing before lock must not stack."""
-    store.save_lineup("2025-11-14", LINEUP)
-    revised = Lineup(entrant="vrishin", picks=(Pick("REB", 999, 500.0),))
-    store.save_lineup("2025-11-14", revised)
-    assert store.lineups("2025-11-14") == [revised]
+def test_a_collection_is_scoped_to_its_creator(store):
+    store.save_card(CARD)
+    other = Card(card_id="2025-11-14:pabb", creator="pabb", date="2025-11-14",
+                 ovr=88, contract=10_000_000, ratings=())
+    store.save_card(other)
+    assert store.cards("vrishin") == [CARD]
+    assert store.cards("pabb") == [other]
 
 
-def test_entrants_do_not_collide(store):
-    store.save_lineup("2025-11-14", LINEUP)
-    store.save_lineup("2025-11-14", Lineup(entrant="pabb", picks=(Pick("REB", 7, 100.0),)))
-    assert {lu.entrant for lu in store.lineups("2025-11-14")} == {"vrishin", "pabb"}
+def test_a_collection_is_newest_first(store):
+    older = Card(card_id="2025-11-10:v", creator="v", date="2025-11-10",
+                 ovr=80, contract=1, ratings=())
+    newer = Card(card_id="2025-11-20:v", creator="v", date="2025-11-20",
+                 ovr=90, contract=1, ratings=())
+    store.save_card(older)
+    store.save_card(newer)
+    assert [c.date for c in store.cards("v")] == ["2025-11-20", "2025-11-10"]
 
 
-def test_unknown_date_is_empty_not_an_error(store):
-    assert store.lineups("1999-01-01") == []
+def test_rebuilding_the_same_night_replaces_rather_than_duplicates(store):
+    """One build per creator per night, so the id is a natural key."""
+    store.save_card(CARD)
+    revised = Card(card_id=CARD.card_id, creator="vrishin", date="2025-11-14",
+                   ovr=99, contract=5_000_000, ratings=())
+    store.save_card(revised)
+    assert store.cards("vrishin") == [revised]
 
 
-def test_history_accumulates_one_entry_per_night(store):
-    """This is the point of persisting anything: the boost tuner cannot reach
-    its 20-night threshold if history dies with the process."""
-    store.save_residuals("2025-11-14", {"PTS": [0.1, -0.4]})
-    store.save_residuals("2025-11-15", {"PTS": [1.2], "REB": [0.3]})
-    history = store.history()
-    assert history["PTS"] == [[0.1, -0.4], [1.2]]
-    assert history["REB"] == [[0.3]]
-
-
-def test_history_is_ordered_by_date(store):
-    store.save_residuals("2025-11-15", {"PTS": [2.0]})
-    store.save_residuals("2025-11-14", {"PTS": [1.0]})
-    assert store.history()["PTS"] == [[1.0], [2.0]]
-
-
-def test_history_is_empty_before_anything_is_resolved(store):
-    assert store.history() == {}
+def test_an_empty_collection_is_empty_not_an_error(store):
+    assert store.cards("nobody") == []
 
 
 @pytest.mark.skipif(
@@ -86,20 +83,8 @@ def test_firestore_satisfies_the_same_contract():
     from slate.store import FirestoreStore
 
     store = FirestoreStore()
-    store.save_lineup("_test", LINEUP)
-    assert LINEUP in store.lineups("_test")
-
-
-def test_boosts_stay_on_seeds_at_nineteen_nights_and_tune_at_twenty():
-    """The whole reason the store exists. Wired end to end: residuals land in
-    the store, the store feeds the tuner, the tuner moves off the seed."""
-    from slate import catalog
-    from slate.tune import BoostTuner
-
-    store = MemoryStore()
-    for night in range(19):
-        store.save_residuals(f"2025-11-{night + 1:02d}", {"PTS": [-3.0, 0.0, 3.0]})
-    assert BoostTuner().boosts(store.history())["PTS"] == catalog.get("PTS").seed_boost
-
-    store.save_residuals("2025-12-01", {"PTS": [-3.0, 0.0, 3.0]})
-    assert BoostTuner().boosts(store.history())["PTS"] > catalog.get("PTS").seed_boost
+    probe = Card(card_id="_test:contract", creator="_test", date="2025-11-14",
+                 ovr=93, contract=26_000_000, ratings=CARD.ratings)
+    store.save_card(probe)
+    assert store.card("_test:contract") == probe
+    assert probe in store.cards("_test")
