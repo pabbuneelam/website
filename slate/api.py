@@ -6,7 +6,7 @@ is how you end up with an API you have to throw away.
 """
 from __future__ import annotations
 
-from collections import defaultdict
+import os
 
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel, Field
@@ -18,6 +18,8 @@ from .project import BaselineProjector
 from .rules import BUDGET, MAX_PICKS, MIN_ALLOCATION
 from .score import NightScorer, validate
 from .sources import FixtureSource
+from .store import MemoryStore, default_store
+from .tune import BoostTuner, night_residuals
 
 # Replay mode resolves dates whose tipoff is long past, so lock is off by
 # default. Flip this on when live data lands.
@@ -26,8 +28,8 @@ ENFORCE_LOCK = False
 app = FastAPI(title=f"{APP_NAME} engine", version="0.1.0")
 source = FixtureSource()
 
-# date -> entrant -> Lineup. A database is a later milestone.
-_lineups: dict[str, dict[str, Lineup]] = defaultdict(dict)
+# Firestore when SLATE_FIREBASE_PROJECT is set, in-memory otherwise.
+store = default_store()
 
 
 class PickIn(BaseModel):
@@ -96,21 +98,47 @@ def submit_lineup(date: str, payload: LineupIn):
     problem = validate(lineup)
     if problem:
         raise HTTPException(422, problem)
-    _lineups[date][payload.entrant] = lineup
+    store.save_lineup(date, lineup)
     return {"accepted": True, "entrant": payload.entrant, "picks": len(lineup.picks)}
 
 
 @app.post("/slates/{date}/resolve")
 def resolve(date: str):
-    """Run the engine over every lineup submitted for this date."""
+    """Run the engine over every lineup submitted for this date.
+
+    Boosts come from history accumulated BEFORE tonight -- a night must not
+    tune the boosts it is itself scored under. Tonight's residuals are written
+    afterwards, for the nights that follow.
+    """
     night = _night(date)
-    entries = _lineups.get(date, {})
+    entries = store.lineups(date)
     if not entries:
         raise HTTPException(409, f"no lineups submitted for {date}")
 
+    boosts = BoostTuner().boosts(store.history())
     scorer = NightScorer(
         night.boxscores, BaselineProjector(night.logs), night.date, night.games
     )
-    results = [scorer.score_lineup(lu) for lu in entries.values()]
+    results = [scorer.score_lineup(lu, boosts) for lu in entries]
     results.sort(key=lambda r: r.total, reverse=True)
-    return {"date": date, "results": results}
+
+    category_ids = [c.id for c in catalog.enabled()]
+    store.save_residuals(date, night_residuals(scorer, category_ids))
+
+    return {
+        "date": date,
+        "boosts": {cid: boosts[cid] for cid in category_ids},
+        "results": results,
+    }
+
+
+@app.get("/health")
+def health():
+    """Which store is live. A misconfigured deploy shows up here rather than
+    silently falling back to memory and losing every lineup on restart."""
+    backend = type(store).__name__
+    return {
+        "store": backend,
+        "durable": not isinstance(store, MemoryStore),
+        "firebase_project": os.environ.get("SLATE_FIREBASE_PROJECT"),
+    }

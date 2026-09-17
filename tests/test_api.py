@@ -79,3 +79,26 @@ def test_a_disabled_category_cannot_be_submitted():
 
 def test_resolving_with_nothing_submitted_is_a_conflict():
     assert client.post("/slates/1999-01-01/resolve").status_code == 404
+
+
+def test_health_reports_which_store_is_live():
+    """A deploy that silently fell back to memory loses every lineup on
+    restart, so it has to be visible over HTTP."""
+    body = client.get("/health").json()
+    assert body["store"] == "MemoryStore"
+    assert body["durable"] is False
+
+
+def test_resolve_reports_the_boosts_it_used():
+    client.post(f"/slates/{DATE}/lineups", json=valid_payload("boostcheck"))
+    body = client.post(f"/slates/{DATE}/resolve").json()
+    assert body["boosts"]["PTS"] == 1.0
+    assert body["boosts"]["TS_PCT"] == 1.4  # seed still standing
+
+
+def test_seeds_still_stand_after_a_single_night():
+    """One night is not 20, so nothing should have tuned yet."""
+    from slate import catalog
+    client.post(f"/slates/{DATE}/lineups", json=valid_payload("once"))
+    boosts = client.post(f"/slates/{DATE}/resolve").json()["boosts"]
+    assert all(boosts[c.id] == c.seed_boost for c in catalog.enabled())

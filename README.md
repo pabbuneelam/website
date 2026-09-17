@@ -15,7 +15,7 @@ one of the build order: the scoring engine and a thin HTTP layer. No UI yet.
 ```sh
 python -m venv .venv && .venv/bin/pip install -e ".[dev]"
 
-.venv/bin/python -m pytest                        # 52 tests
+.venv/bin/python -m pytest                        # 65 tests
 .venv/bin/python -m slate replay 2025-11-14       # resolve the stored slate
 .venv/bin/uvicorn slate.api:app --reload          # http://127.0.0.1:8000/docs
 ```
@@ -37,6 +37,34 @@ A metric returning `None` — guardrail failed, or the data source has no
 play-by-play — drops the player from that category's pool *and* scores the pick
 zero. That is what stops a 1-for-1 night from winning true shooting.
 
+## Persistence
+
+Defaults to an in-memory store, so tests and Replay need no credentials. Point
+it at Firebase and lineups plus nightly residuals become durable:
+
+```sh
+.venv/bin/pip install -e ".[firestore]"
+export SLATE_FIREBASE_PROJECT=questly-7f3a2
+export GOOGLE_APPLICATION_CREDENTIALS=~/.secrets/questly-sa.json
+.venv/bin/uvicorn slate.api:app
+```
+
+`GET /health` reports which store is live, because a deploy that quietly fell
+back to memory loses every lineup on restart.
+
+```
+slates/{date}/lineups/{entrant}   one submitted lineup
+nights/{date}                     {residuals: {category_id: [z, ...]}}
+```
+
+That second collection is the point. The boost tuner holds its seed values
+until 20 nights of residual history exist, and nothing accumulates across a
+restart without it. Boosts for a night are computed from history *before* that
+night — a slate never tunes the multipliers it is itself scored under.
+
+Auth is a service account, so security rules are bypassed. Rules only start
+mattering when a browser reads these collections directly.
+
 ## Layout
 
 | Path | What it is |
@@ -47,7 +75,8 @@ zero. That is what stops a 1-for-1 night from winning true shooting.
 | `slate/score.py` | Pools, residuals, percentiles, backups, validation. |
 | `slate/tune.py` | Self-tuning niche boosts, clamped and seeded. |
 | `slate/sources/` | `FixtureSource` today, `BallDontLieSource` stubbed. |
-| `slate/api.py` | Four endpoints, in-memory store. |
+| `slate/store.py` | `MemoryStore` (default) and `FirestoreStore`. |
+| `slate/api.py` | Five endpoints. |
 | `tools/make_fixture.py` | Regenerates the committed fixture. Seeded. |
 
 ## Data tiers
