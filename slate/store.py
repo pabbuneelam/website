@@ -10,6 +10,7 @@ accumulates across a restart without this.
 """
 from __future__ import annotations
 
+import json
 import os
 from collections import defaultdict
 from collections.abc import Sequence
@@ -80,9 +81,22 @@ class FirestoreStore:
     """
 
     def __init__(self, project: str | None = None) -> None:
-        from google.cloud import firestore  # imported late: optional dependency
+        from google.cloud import firestore
 
-        self._db = firestore.Client(project=project or os.environ["SLATE_FIREBASE_PROJECT"])
+        project = project or os.environ["SLATE_FIREBASE_PROJECT"]
+        # Serverless hosts have no filesystem to park a key file on, so accept
+        # the service-account JSON inline as well as the usual
+        # GOOGLE_APPLICATION_CREDENTIALS path.
+        raw = os.environ.get("GOOGLE_APPLICATION_CREDENTIALS_JSON")
+        if raw:
+            from google.oauth2 import service_account
+
+            credentials = service_account.Credentials.from_service_account_info(
+                json.loads(raw)
+            )
+            self._db = firestore.Client(project=project, credentials=credentials)
+        else:
+            self._db = firestore.Client(project=project)
 
     def save_lineup(self, date: str, lineup: Lineup) -> None:
         (

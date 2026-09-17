@@ -15,7 +15,7 @@ one of the build order: the scoring engine and a thin HTTP layer. No UI yet.
 ```sh
 python -m venv .venv && .venv/bin/pip install -e ".[dev]"
 
-.venv/bin/python -m pytest                        # 65 tests
+.venv/bin/python -m pytest                        # 67 tests
 .venv/bin/python -m slate replay 2025-11-14       # resolve the stored slate
 .venv/bin/uvicorn slate.api:app --reload          # http://127.0.0.1:8000/docs
 ```
@@ -37,15 +37,37 @@ A metric returning `None` — guardrail failed, or the data source has no
 play-by-play — drops the player from that category's pool *and* scores the pick
 zero. That is what stops a 1-for-1 night from winning true shooting.
 
+## Deployed
+
+Production: **https://slate-theta-two.vercel.app** — `/docs` for the OpenAPI UI.
+
+Vercel resolves the entrypoint from `[tool.vercel] entrypoint = "slate.api:app"`
+in `pyproject.toml`; there is no `app.py` shim. `vercel.json` trims tests and
+tooling from the bundle but **must not exclude `slate/fixtures/`** — that JSON
+is runtime data, not test data.
+
+Read endpoints work now. Writes return **503 until Firestore is configured**, and
+that is deliberate: serverless instances are stateless and scale to zero, so a
+submit and its resolve can land on different ones. The in-memory store is not
+merely non-durable there, it silently loses lineups. Failing loudly beats
+behaving randomly.
+
+```sh
+vercel env add SLATE_FIREBASE_PROJECT production              # questly-7f3a2
+vercel env add GOOGLE_APPLICATION_CREDENTIALS_JSON production # paste the whole key JSON
+vercel deploy --prod
+```
+
 ## Persistence
 
 Defaults to an in-memory store, so tests and Replay need no credentials. Point
 it at Firebase and lineups plus nightly residuals become durable:
 
 ```sh
-.venv/bin/pip install -e ".[firestore]"
 export SLATE_FIREBASE_PROJECT=questly-7f3a2
 export GOOGLE_APPLICATION_CREDENTIALS=~/.secrets/questly-sa.json
+# or, where there is no filesystem to park a key file on:
+# export GOOGLE_APPLICATION_CREDENTIALS_JSON="$(cat ~/.secrets/questly-sa.json)"
 .venv/bin/uvicorn slate.api:app
 ```
 

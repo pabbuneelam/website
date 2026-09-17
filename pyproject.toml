@@ -3,12 +3,23 @@ name = "slate"
 version = "0.1.0"
 description = "Nightly NBA fantasy scored on percentile-of-residual"
 requires-python = ">=3.11"
-dependencies = ["fastapi>=0.115", "uvicorn>=0.32"]
+# google-cloud-firestore is a runtime dependency, not an extra: on Vercel the
+# in-memory store is not merely non-durable, it is wrong -- instances are
+# stateless and scale to zero, so a submit and its resolve can land on
+# different ones.
+dependencies = [
+    "fastapi>=0.115",
+    "uvicorn>=0.32",
+    "google-cloud-firestore>=2.19",
+]
 
 [project.optional-dependencies]
 dev = ["pytest>=8", "httpx>=0.27"]
-# Only needed to run against Firebase; the default in-memory store needs nothing.
-firestore = ["google-cloud-firestore>=2.19"]
+
+[tool.vercel]
+# Vercel loads `app` from slate/api.py. Without this it would look for
+# app.py / main.py / server.py at the project root.
+entrypoint = "slate.api:app"
 
 [build-system]
 requires = ["setuptools>=68"]

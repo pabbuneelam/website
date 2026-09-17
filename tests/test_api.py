@@ -102,3 +102,19 @@ def test_seeds_still_stand_after_a_single_night():
     client.post(f"/slates/{DATE}/lineups", json=valid_payload("once"))
     boosts = client.post(f"/slates/{DATE}/resolve").json()["boosts"]
     assert all(boosts[c.id] == c.seed_boost for c in catalog.enabled())
+
+
+def test_serverless_without_a_durable_store_refuses_rather_than_misbehaving(monkeypatch):
+    """On a stateless host a submit and its resolve can hit different
+    instances, so an in-memory store silently drops lineups. Fail loudly."""
+    from slate import api
+
+    monkeypatch.setattr(api, "ON_SERVERLESS", True)
+    response = client.post(f"/slates/{DATE}/lineups", json=valid_payload("ghost"))
+    assert response.status_code == 503
+    assert "durable store" in response.json()["detail"]
+    assert client.post(f"/slates/{DATE}/resolve").status_code == 503
+
+
+def test_local_runs_are_unaffected_by_that_guard():
+    assert client.post(f"/slates/{DATE}/lineups", json=valid_payload("local")).status_code == 200

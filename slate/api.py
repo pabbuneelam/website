@@ -31,6 +31,21 @@ source = FixtureSource()
 # Firestore when SLATE_FIREBASE_PROJECT is set, in-memory otherwise.
 store = default_store()
 
+# Serverless instances are stateless and scale to zero, so a submit and its
+# resolve can land on different ones. In memory there is not merely
+# non-durable there, it is wrong -- so refuse rather than behave randomly.
+ON_SERVERLESS = bool(os.environ.get("VERCEL"))
+
+
+def _require_durable_store() -> None:
+    if ON_SERVERLESS and isinstance(store, MemoryStore):
+        raise HTTPException(
+            503,
+            "no durable store configured. Set SLATE_FIREBASE_PROJECT and "
+            "GOOGLE_APPLICATION_CREDENTIALS_JSON; the in-memory store loses "
+            "lineups between requests on serverless instances.",
+        )
+
 
 class PickIn(BaseModel):
     category_id: str
@@ -87,6 +102,7 @@ def get_slate(date: str):
 
 @app.post("/slates/{date}/lineups")
 def submit_lineup(date: str, payload: LineupIn):
+    _require_durable_store()
     _night(date)
     lineup = Lineup(
         entrant=payload.entrant,
@@ -110,6 +126,7 @@ def resolve(date: str):
     tune the boosts it is itself scored under. Tonight's residuals are written
     afterwards, for the nights that follow.
     """
+    _require_durable_store()
     night = _night(date)
     entries = store.lineups(date)
     if not entries:
@@ -141,4 +158,5 @@ def health():
         "store": backend,
         "durable": not isinstance(store, MemoryStore),
         "firebase_project": os.environ.get("SLATE_FIREBASE_PROJECT"),
+        "serverless": ON_SERVERLESS,
     }
