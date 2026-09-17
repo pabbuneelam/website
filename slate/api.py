@@ -18,11 +18,23 @@ from .models import Build, Selection
 from .name import APP_NAME
 from .score import NightRater
 from .sources import FixtureSource
-from .store import MemoryStore, default_store
+from .store import MemoryStore, Store, default_store
 
 app = FastAPI(title=f"{APP_NAME} engine", version="0.2.0")
 source = FixtureSource()
-store = default_store()
+
+# Built on first use, never at import. A Firestore client constructed at module
+# scope runs credential discovery while the platform is merely importing this
+# module to find the ASGI app -- which hangs the build in a sandbox, and costs
+# a network round trip on every cold start even when it works.
+store: Store | None = None
+
+
+def get_store() -> Store:
+    global store
+    if store is None:
+        store = default_store()
+    return store
 
 # Serverless instances are stateless and scale to zero, so an in-memory store
 # there is not merely non-durable -- a card written by one instance is invisible
@@ -31,7 +43,7 @@ ON_SERVERLESS = bool(os.environ.get("VERCEL"))
 
 
 def _require_durable_store() -> None:
-    if ON_SERVERLESS and isinstance(store, MemoryStore):
+    if ON_SERVERLESS and isinstance(get_store(), MemoryStore):
         raise HTTPException(
             503,
             "no durable store configured. Set SLATE_FIREBASE_PROJECT and "
@@ -110,7 +122,7 @@ def submit_build(date: str, payload: BuildIn):
         raise HTTPException(422, problem)
 
     card = build_card(build, NightRater(night.boxscores), night.date)
-    store.save_card(card)
+    get_store().save_card(card)
     return card
 
 
@@ -118,16 +130,17 @@ def submit_build(date: str, payload: BuildIn):
 def get_collection(creator: str):
     """Every card this creator has made, newest first."""
     _require_durable_store()
-    return store.cards(creator)
+    return get_store().cards(creator)
 
 
 @app.get("/health")
 def health():
     """Which store is live. A deploy that silently fell back to memory loses
     every card, so it has to be visible over HTTP."""
+    live = get_store()
     return {
-        "store": type(store).__name__,
-        "durable": not isinstance(store, MemoryStore),
+        "store": type(live).__name__,
+        "durable": not isinstance(live, MemoryStore),
         "firebase_project": os.environ.get("SLATE_FIREBASE_PROJECT"),
         "serverless": ON_SERVERLESS,
     }

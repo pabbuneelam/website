@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import os
+
 import pytest
 from fastapi.testclient import TestClient
 
@@ -113,3 +115,33 @@ def test_serverless_without_a_durable_store_refuses_rather_than_misbehaving(monk
     assert response.status_code == 503
     assert "durable store" in response.json()["detail"]
     assert client.get("/cards/ghost").status_code == 503
+
+
+def test_importing_the_app_never_constructs_a_store(tmp_path):
+    """Regression: a Firestore client built at module scope runs credential
+    discovery while the platform is merely importing the module to find the
+    ASGI app. That hangs the build in a sandbox and costs a network round trip
+    on every cold start. Run in a subprocess -- the module is already imported
+    in this process, so nothing else can observe it.
+    """
+    import subprocess
+    import sys
+
+    result = subprocess.run(
+        [sys.executable, "-c",
+         "import slate.api as a; print('STORE', a.store)"],
+        env={"SLATE_FIREBASE_PROJECT": "questly-7f3a2",
+             "PATH": os.environ.get("PATH", ""),
+             "HOME": os.environ.get("HOME", "")},
+        capture_output=True, text=True, timeout=60,
+    )
+    assert result.returncode == 0, result.stderr
+    assert "STORE None" in result.stdout
+
+
+def test_get_store_is_built_once_and_reused(monkeypatch):
+    from slate import api
+
+    monkeypatch.setattr(api, "store", None)
+    monkeypatch.delenv("SLATE_FIREBASE_PROJECT", raising=False)
+    assert api.get_store() is api.get_store()
