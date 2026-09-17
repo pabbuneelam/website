@@ -5,3 +5,11 @@ __pycache__/
 .firebase/
 *.egg-info/
 .vercel
+
+# Service account keys. Cannot just ignore *.json -- slate/fixtures/*.json is
+# tracked runtime data.
+*serviceAccount*.json
+*-adminsdk-*.json
+*-sa.json
+.env
+.env.local
