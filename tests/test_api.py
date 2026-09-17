@@ -81,12 +81,33 @@ def test_resolving_with_nothing_submitted_is_a_conflict():
     assert client.post("/slates/1999-01-01/resolve").status_code == 404
 
 
-def test_health_reports_which_store_is_live():
+def test_health_reports_which_store_is_live(monkeypatch):
     """A deploy that silently fell back to memory loses every lineup on
-    restart, so it has to be visible over HTTP."""
+    restart, so it has to be visible over HTTP.
+
+    The store is pinned rather than read from the ambient environment -- this
+    assertion must not flip depending on whether credentials happen to be
+    exported in the shell running the tests.
+    """
+    from slate import api
+    from slate.store import MemoryStore
+
+    monkeypatch.setattr(api, "store", MemoryStore())
     body = client.get("/health").json()
     assert body["store"] == "MemoryStore"
     assert body["durable"] is False
+
+
+def test_health_reports_a_durable_store_as_durable(monkeypatch):
+    from slate import api
+
+    class FakeDurableStore:
+        pass
+
+    monkeypatch.setattr(api, "store", FakeDurableStore())
+    body = client.get("/health").json()
+    assert body["store"] == "FakeDurableStore"
+    assert body["durable"] is True
 
 
 def test_resolve_reports_the_boosts_it_used():
@@ -108,8 +129,10 @@ def test_serverless_without_a_durable_store_refuses_rather_than_misbehaving(monk
     """On a stateless host a submit and its resolve can hit different
     instances, so an in-memory store silently drops lineups. Fail loudly."""
     from slate import api
+    from slate.store import MemoryStore
 
     monkeypatch.setattr(api, "ON_SERVERLESS", True)
+    monkeypatch.setattr(api, "store", MemoryStore())
     response = client.post(f"/slates/{DATE}/lineups", json=valid_payload("ghost"))
     assert response.status_code == 503
     assert "durable store" in response.json()["detail"]
