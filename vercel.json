@@ -1,22 +1,10 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
-  "services": {
-    "backend": {
-      "root": ".",
-      "entrypoint": "slate/api.py"
-    },
-    "frontend": {
-      "root": "frontend"
+  "buildCommand": "cd frontend && npm install && npm run build",
+  "outputDirectory": "frontend/dist",
+  "functions": {
+    "slate/api.py": {
+      "excludeFiles": "{tests/**,tools/**,.venv/**,docs/**}"
     }
-  },
-  "rewrites": [
-    { "source": "/attributes", "destination": { "service": "backend" } },
-    { "source": "/slates/:path*", "destination": { "service": "backend" } },
-    { "source": "/cards/:path*", "destination": { "service": "backend" } },
-    { "source": "/health", "destination": { "service": "backend" } },
-    { "source": "/docs", "destination": { "service": "backend" } },
-    { "source": "/redoc", "destination": { "service": "backend" } },
-    { "source": "/openapi.json", "destination": { "service": "backend" } },
-    { "source": "/(.*)", "destination": { "service": "frontend" } }
-  ]
+  }
 }
