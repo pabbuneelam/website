@@ -23,7 +23,7 @@
  "boxscores": [
   {
    "player_id": 101,
-   "player_name": "BOS Player 1",
+   "player_name": "R. Okonkwo",
    "team": "BOS",
    "opponent": "NYK",
    "minutes": 26.5,
@@ -61,7 +61,7 @@
   },
   {
    "player_id": 102,
-   "player_name": "BOS Player 2",
+   "player_name": "C. Rahl",
    "team": "BOS",
    "opponent": "NYK",
    "minutes": 26.5,
@@ -99,7 +99,7 @@
   },
   {
    "player_id": 103,
-   "player_name": "BOS Player 3",
+   "player_name": "D. Vance",
    "team": "BOS",
    "opponent": "NYK",
    "minutes": 9.0,
@@ -137,7 +137,7 @@
   },
   {
    "player_id": 104,
-   "player_name": "BOS Player 4",
+   "player_name": "K. Mbeki",
    "team": "BOS",
    "opponent": "NYK",
    "minutes": 11.0,
@@ -175,7 +175,7 @@
   },
   {
    "player_id": 105,
-   "player_name": "BOS Player 5",
+   "player_name": "R. Toloza",
    "team": "BOS",
    "opponent": "NYK",
    "minutes": 25.5,
@@ -213,7 +213,7 @@
   },
   {
    "player_id": 106,
-   "player_name": "NYK Player 1",
+   "player_name": "J. Ferreira",
    "team": "NYK",
    "opponent": "BOS",
    "minutes": 24.9,
@@ -251,7 +251,7 @@
   },
   {
    "player_id": 107,
-   "player_name": "NYK Player 2",
+   "player_name": "M. Salib",
    "team": "NYK",
    "opponent": "BOS",
    "minutes": 24.9,
@@ -289,7 +289,7 @@
   },
   {
    "player_id": 108,
-   "player_name": "NYK Player 3",
+   "player_name": "T. Drazen",
    "team": "NYK",
    "opponent": "BOS",
    "minutes": 31.3,
@@ -327,7 +327,7 @@
   },
   {
    "player_id": 109,
-   "player_name": "NYK Player 4",
+   "player_name": "A. Whitlock",
    "team": "NYK",
    "opponent": "BOS",
    "minutes": 34.4,
@@ -365,7 +365,7 @@
   },
   {
    "player_id": 110,
-   "player_name": "NYK Player 5",
+   "player_name": "J. Nakamura",
    "team": "NYK",
    "opponent": "BOS",
    "minutes": 36.1,
@@ -403,7 +403,7 @@
   },
   {
    "player_id": 111,
-   "player_name": "DEN Player 1",
+   "player_name": "C. Basara",
    "team": "DEN",
    "opponent": "LAL",
    "minutes": 0,
@@ -441,7 +441,7 @@
   },
   {
    "player_id": 112,
-   "player_name": "DEN Player 2",
+   "player_name": "D. Olumide",
    "team": "DEN",
    "opponent": "LAL",
    "minutes": 37.2,
@@ -479,7 +479,7 @@
   },
   {
    "player_id": 113,
-   "player_name": "DEN Player 3",
+   "player_name": "K. Kranz",
    "team": "DEN",
    "opponent": "LAL",
    "minutes": 35.6,
@@ -517,7 +517,7 @@
   },
   {
    "player_id": 114,
-   "player_name": "DEN Player 4",
+   "player_name": "R. Petrov",
    "team": "DEN",
    "opponent": "LAL",
    "minutes": 22.6,
@@ -555,7 +555,7 @@
   },
   {
    "player_id": 115,
-   "player_name": "DEN Player 5",
+   "player_name": "C. Ilunga",
    "team": "DEN",
    "opponent": "LAL",
    "minutes": 24.1,
@@ -593,7 +593,7 @@
   },
   {
    "player_id": 116,
-   "player_name": "LAL Player 1",
+   "player_name": "M. Marchetti",
    "team": "LAL",
    "opponent": "DEN",
    "minutes": 37.4,
@@ -631,7 +631,7 @@
   },
   {
    "player_id": 117,
-   "player_name": "LAL Player 2",
+   "player_name": "T. Adeyemi",
    "team": "LAL",
    "opponent": "DEN",
    "minutes": 35.3,
@@ -669,7 +669,7 @@
   },
   {
    "player_id": 118,
-   "player_name": "LAL Player 3",
+   "player_name": "A. Sorensen",
    "team": "LAL",
    "opponent": "DEN",
    "minutes": 30.6,
@@ -707,7 +707,7 @@
   },
   {
    "player_id": 119,
-   "player_name": "LAL Player 4",
+   "player_name": "J. Quezada",
    "team": "LAL",
    "opponent": "DEN",
    "minutes": 35.0,
@@ -745,7 +745,7 @@
   },
   {
    "player_id": 120,
-   "player_name": "LAL Player 5",
+   "player_name": "M. Baptiste",
    "team": "LAL",
    "opponent": "DEN",
    "minutes": 37.4,
@@ -783,7 +783,7 @@
   },
   {
    "player_id": 121,
-   "player_name": "OKC Player 1",
+   "player_name": "D. Halvorsen",
    "team": "OKC",
    "opponent": "MIN",
    "minutes": 27.5,
@@ -821,7 +821,7 @@
   },
   {
    "player_id": 122,
-   "player_name": "OKC Player 2",
+   "player_name": "K. Ncube",
    "team": "OKC",
    "opponent": "MIN",
    "minutes": 35.1,
@@ -859,7 +859,7 @@
   },
   {
    "player_id": 123,
-   "player_name": "OKC Player 3",
+   "player_name": "R. Dagher",
    "team": "OKC",
    "opponent": "MIN",
    "minutes": 25.2,
@@ -897,7 +897,7 @@
   },
   {
    "player_id": 124,
-   "player_name": "OKC Player 4",
+   "player_name": "C. Rusk",
    "team": "OKC",
    "opponent": "MIN",
    "minutes": 36.4,
@@ -935,7 +935,7 @@
   },
   {
    "player_id": 125,
-   "player_name": "OKC Player 5",
+   "player_name": "D. Emeka",
    "team": "OKC",
    "opponent": "MIN",
    "minutes": 24.5,
@@ -973,7 +973,7 @@
   },
   {
    "player_id": 126,
-   "player_name": "MIN Player 1",
+   "player_name": "T. Vasquez",
    "team": "MIN",
    "opponent": "OKC",
    "minutes": 34.6,
@@ -1011,7 +1011,7 @@
   },
   {
    "player_id": 127,
-   "player_name": "MIN Player 2",
+   "player_name": "A. Traore",
    "team": "MIN",
    "opponent": "OKC",
    "minutes": 24.9,
@@ -1049,7 +1049,7 @@
   },
   {
    "player_id": 128,
-   "player_name": "MIN Player 3",
+   "player_name": "J. Lindqvist",
    "team": "MIN",
    "opponent": "OKC",
    "minutes": 37.5,
@@ -1087,7 +1087,7 @@
   },
   {
    "player_id": 129,
-   "player_name": "MIN Player 4",
+   "player_name": "M. Ozols",
    "team": "MIN",
    "opponent": "OKC",
    "minutes": 26.2,
@@ -1125,7 +1125,7 @@
   },
   {
    "player_id": 130,
-   "player_name": "MIN Player 5",
+   "player_name": "T. Amadi",
    "team": "MIN",
    "opponent": "OKC",
    "minutes": 24.6,

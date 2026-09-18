@@ -105,15 +105,23 @@ def test_health_reports_which_store_is_live():
     assert body["durable"] is False
 
 
-def test_serverless_without_a_durable_store_refuses_rather_than_misbehaving(monkeypatch):
-    """On a stateless host a card written by one instance is invisible to the
-    next, so an in-memory store silently loses them. Fail loudly."""
+def test_building_works_on_a_stateless_host_even_with_no_durable_store(monkeypatch):
+    """Rating a night is pure computation, so the game stays playable and
+    demoable without persistence."""
     from slate import api
 
     monkeypatch.setattr(api, "ON_SERVERLESS", True)
     response = client.post(f"/slates/{DATE}/builds", json=payload("ghost"))
-    assert response.status_code == 503
-    assert "durable store" in response.json()["detail"]
+    assert response.status_code == 200
+    assert response.json()["ovr"] > 0
+
+
+def test_the_collection_refuses_rather_than_lying_about_what_it_saved(monkeypatch):
+    """A card written to memory on a stateless host is invisible to the next
+    request. Returning an empty collection would look like data loss."""
+    from slate import api
+
+    monkeypatch.setattr(api, "ON_SERVERLESS", True)
     assert client.get("/cards/ghost").status_code == 503
 
 
@@ -145,3 +153,21 @@ def test_get_store_is_built_once_and_reused(monkeypatch):
     monkeypatch.setattr(api, "store", None)
     monkeypatch.delenv("SLATE_FIREBASE_PROJECT", raising=False)
     assert api.get_store() is api.get_store()
+
+
+def test_the_demo_page_is_served_at_the_root():
+    """The UI ships inside the function bundle, so a deploy that trimmed it
+    away would 500 here rather than silently serving nothing."""
+    response = client.get("/")
+    assert response.status_code == 200
+    assert "text/html" in response.headers["content-type"]
+    body = response.text
+    assert "<title>" in body
+    for hook in ("slots", "rows", "build", "cardWrap"):
+        assert f'id="{hook}"' in body
+
+
+def test_the_demo_page_labels_its_data_as_sample():
+    """It is public and the box scores are generated. Saying so is not
+    optional."""
+    assert "Sample slate" in client.get("/").text

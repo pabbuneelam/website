@@ -29,4 +29,4 @@ build-backend = "setuptools.build_meta"
 include = ["slate*"]
 
 [tool.setuptools.package-data]
-slate = ["fixtures/*.json"]
+slate = ["fixtures/*.json", "web/*.html"]

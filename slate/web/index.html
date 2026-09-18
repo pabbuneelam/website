@@ -1,0 +1,423 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Slate — build a player from tonight</title>
+<meta name="description" content="Build a custom basketball player out of one night of real NBA performances.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Saira+Condensed:wght@500;700;900&family=Archivo:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+:root{
+  --ink:#0A0B0D;
+  --ink-2:#121418;
+  --ink-3:#1B1E24;
+  --line:#2A2E36;
+  --bone:#F0EBE1;
+  --bone-dim:#9A968E;
+  --bone-faint:#5E5B56;
+  --hot:#FF4A1C;
+  --court:#C8A15A;
+  --good:#7FD4A8;
+  --rule:1px solid var(--line);
+}
+
+*{box-sizing:border-box;margin:0;padding:0}
+html{-webkit-text-size-adjust:100%}
+body{
+  background:var(--ink);
+  color:var(--bone);
+  font-family:'Archivo',system-ui,sans-serif;
+  font-size:15px;
+  line-height:1.45;
+  -webkit-font-smoothing:antialiased;
+  min-height:100vh;
+  overflow-x:hidden;
+}
+
+/* grain + court hatch */
+body::before{
+  content:'';position:fixed;inset:0;z-index:0;pointer-events:none;
+  background-image:
+    repeating-linear-gradient(115deg, rgba(240,235,225,.020) 0 1px, transparent 1px 7px);
+}
+body::after{
+  content:'';position:fixed;inset:0;z-index:0;pointer-events:none;opacity:.14;
+  background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='120'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='3'/%3E%3C/filter%3E%3Crect width='120' height='120' filter='url(%23n)' opacity='.45'/%3E%3C/svg%3E");
+}
+
+.display{font-family:'Saira Condensed',Impact,sans-serif;font-weight:900;letter-spacing:.005em;text-transform:uppercase;line-height:.88}
+.num{font-variant-numeric:tabular-nums;font-family:'Saira Condensed',sans-serif;font-weight:700}
+.micro{font-size:10px;letter-spacing:.20em;text-transform:uppercase;font-weight:600;color:var(--bone-faint)}
+
+/* ---------------- masthead ---------------- */
+header{
+  position:relative;z-index:2;
+  border-bottom:2px solid var(--bone);
+  padding:16px 26px 12px;
+  display:flex;align-items:flex-end;justify-content:space-between;gap:20px;flex-wrap:wrap;
+}
+.brand{display:flex;align-items:baseline;gap:12px}
+.brand h1{font-size:clamp(30px,4.4vw,46px)}
+.brand .tag{font-size:11px;letter-spacing:.24em;text-transform:uppercase;color:var(--hot);font-weight:700;padding-bottom:4px}
+.mast-right{display:flex;gap:26px;align-items:flex-end;padding-bottom:4px}
+.mast-stat{text-align:right}
+.mast-stat b{display:block;font-family:'Saira Condensed',sans-serif;font-weight:900;font-size:22px;font-variant-numeric:tabular-nums;line-height:1}
+
+.ticker{
+  position:relative;z-index:2;
+  background:var(--hot);color:var(--ink);
+  border-bottom:2px solid var(--bone);
+  overflow:hidden;white-space:nowrap;
+}
+.ticker div{display:inline-block;padding:5px 0;animation:slide 44s linear infinite;font-size:11px;letter-spacing:.16em;text-transform:uppercase;font-weight:700}
+.ticker span{padding:0 22px}
+@keyframes slide{from{transform:translateX(0)}to{transform:translateX(-50%)}}
+
+/* ---------------- layout ---------------- */
+main{position:relative;z-index:2;display:grid;grid-template-columns:minmax(0,1.25fr) minmax(360px,.85fr);gap:0;align-items:start}
+@media(max-width:940px){main{grid-template-columns:1fr}}
+
+.left{border-right:2px solid var(--bone);min-height:calc(100vh - 120px)}
+@media(max-width:940px){.left{border-right:0;border-bottom:2px solid var(--bone)}}
+
+.sect-head{
+  display:flex;align-items:center;justify-content:space-between;gap:14px;
+  padding:13px 26px;border-bottom:var(--rule);background:var(--ink-2);
+  position:sticky;top:0;z-index:5;
+}
+.sect-head h2{font-size:19px}
+
+/* slots */
+.slots{display:grid;grid-template-columns:repeat(3,1fr);border-bottom:2px solid var(--bone)}
+@media(max-width:700px){.slots{grid-template-columns:repeat(2,1fr)}}
+.slot{
+  border-right:var(--rule);border-bottom:var(--rule);
+  padding:11px 13px 13px;cursor:pointer;background:transparent;
+  text-align:left;color:inherit;font:inherit;
+  transition:background .14s ease;position:relative;min-height:84px;
+}
+.slot:nth-child(3n){border-right:0}
+@media(max-width:700px){.slot:nth-child(3n){border-right:var(--rule)}.slot:nth-child(2n){border-right:0}}
+.slot:hover{background:var(--ink-3)}
+.slot[aria-selected="true"]{background:var(--ink-3)}
+.slot[aria-selected="true"]::before{content:'';position:absolute;left:0;top:0;bottom:0;width:3px;background:var(--hot)}
+.slot .label{font-size:11px;letter-spacing:.14em;text-transform:uppercase;font-weight:700;color:var(--bone-dim);margin-bottom:7px}
+.slot .filled{font-family:'Saira Condensed',sans-serif;font-weight:700;font-size:20px;text-transform:uppercase;line-height:1}
+.slot .empty{font-family:'Saira Condensed',sans-serif;font-weight:700;font-size:20px;color:var(--bone-faint);text-transform:uppercase}
+.slot .cost{font-size:11px;color:var(--court);font-variant-numeric:tabular-nums;margin-top:4px;letter-spacing:.04em}
+.slot .clear{position:absolute;right:8px;top:8px;background:none;border:0;color:var(--bone-faint);cursor:pointer;font-size:15px;line-height:1;padding:3px 5px}
+.slot .clear:hover{color:var(--hot)}
+
+/* roster list */
+.filters{display:flex;gap:0;border-bottom:var(--rule);overflow-x:auto}
+.filters button{
+  flex:1 0 auto;background:none;border:0;border-right:var(--rule);color:var(--bone-dim);
+  font:inherit;font-size:11px;letter-spacing:.14em;text-transform:uppercase;font-weight:700;
+  padding:9px 14px;cursor:pointer;transition:.14s;white-space:nowrap;
+}
+.filters button:hover{color:var(--bone)}
+.filters button[aria-pressed="true"]{background:var(--bone);color:var(--ink)}
+
+.rows{max-height:min(46vh,430px);overflow-y:auto}
+.row{
+  display:grid;grid-template-columns:34px 1fr 62px 92px 30px;align-items:center;gap:10px;
+  padding:9px 26px;border-bottom:var(--rule);cursor:pointer;
+  transition:background .12s ease;width:100%;text-align:left;background:none;border-left:0;border-right:0;border-top:0;color:inherit;font:inherit;
+}
+.row:hover{background:var(--ink-2)}
+.row:disabled{opacity:.28;cursor:not-allowed}
+.row .no{font-size:11px;color:var(--bone-faint);font-variant-numeric:tabular-nums}
+.row .nm{font-family:'Saira Condensed',sans-serif;font-weight:700;font-size:17px;text-transform:uppercase;letter-spacing:.01em}
+.row .tm{font-size:11px;letter-spacing:.1em;font-weight:700;color:var(--bone-dim)}
+.row .sal{font-variant-numeric:tabular-nums;font-size:13px;color:var(--court);text-align:right;font-weight:600}
+.row .pick{font-size:11px;letter-spacing:.1em;text-transform:uppercase;font-weight:700;color:var(--hot);opacity:0;text-align:right}
+.row:hover .pick{opacity:1}
+.row.taken .pick{opacity:1;color:var(--bone-faint)}
+
+/* cap bar */
+.cap{padding:14px 26px;border-bottom:var(--rule);background:var(--ink-2)}
+.cap-top{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:8px}
+.cap-top b{font-family:'Saira Condensed',sans-serif;font-weight:900;font-size:26px;font-variant-numeric:tabular-nums}
+.bar{height:6px;background:var(--ink-3);position:relative;overflow:hidden}
+.bar i{position:absolute;inset:0 auto 0 0;background:var(--court);transition:width .4s cubic-bezier(.2,.8,.2,1)}
+
+.act{padding:18px 26px 26px}
+.build-btn{
+  width:100%;background:var(--hot);color:var(--ink);border:0;cursor:pointer;
+  font-family:'Saira Condensed',sans-serif;font-weight:900;font-size:26px;text-transform:uppercase;
+  letter-spacing:.06em;padding:15px;transition:.16s;position:relative;overflow:hidden;
+}
+.build-btn:disabled{background:var(--ink-3);color:var(--bone-faint);cursor:not-allowed}
+.build-btn:not(:disabled):hover{transform:translateY(-2px);box-shadow:0 8px 0 0 #7A1C06}
+.build-btn:not(:disabled):active{transform:translateY(0);box-shadow:none}
+.hint{margin-top:9px;font-size:12px;color:var(--bone-faint)}
+
+/* ---------------- card ---------------- */
+.right{position:sticky;top:0;padding:0 0 40px}
+.card-wrap{padding:26px}
+.card{border:2px solid var(--bone);background:linear-gradient(168deg,var(--ink-2),var(--ink));position:relative}
+.card::after{content:'';position:absolute;inset:5px;border:1px solid var(--line);pointer-events:none}
+
+.card-top{padding:18px 20px 14px;border-bottom:2px solid var(--bone);display:flex;justify-content:space-between;align-items:flex-start;gap:14px}
+.ovr-block{display:flex;align-items:baseline;gap:9px}
+.ovr{font-family:'Saira Condensed',sans-serif;font-weight:900;font-size:78px;line-height:.78;font-variant-numeric:tabular-nums}
+.ovr-lab{writing-mode:vertical-rl;font-size:10px;letter-spacing:.22em;font-weight:700;color:var(--bone-faint);text-transform:uppercase}
+.money{text-align:right}
+.money b{display:block;font-family:'Saira Condensed',sans-serif;font-weight:900;font-size:30px;color:var(--court);font-variant-numeric:tabular-nums;line-height:1}
+.money .per{font-size:11px;color:var(--bone-faint);letter-spacing:.06em;margin-top:3px}
+
+.attrs{padding:4px 0}
+.attr{display:grid;grid-template-columns:1fr 46px;gap:12px;align-items:center;padding:10px 20px;border-bottom:var(--rule)}
+.attr:last-child{border-bottom:0}
+.attr .an{font-size:11px;letter-spacing:.13em;text-transform:uppercase;font-weight:700;color:var(--bone-dim)}
+.attr .who{font-family:'Saira Condensed',sans-serif;font-weight:700;font-size:16px;text-transform:uppercase;margin-top:1px}
+.attr .rt{font-family:'Saira Condensed',sans-serif;font-weight:900;font-size:32px;text-align:right;font-variant-numeric:tabular-nums;line-height:1}
+.attr .meter{grid-column:1/-1;height:3px;background:var(--ink-3);position:relative;margin-top:7px}
+.attr .meter i{position:absolute;inset:0 auto 0 0;background:var(--bone);width:0;transition:width .7s cubic-bezier(.2,.9,.2,1)}
+.attr.elite .rt{color:var(--hot)}
+.attr.elite .meter i{background:var(--hot)}
+.attr.zero .rt{color:var(--bone-faint)}
+.attr .note{font-size:11px;color:var(--bone-faint);font-style:italic;margin-top:2px}
+
+.card-foot{padding:12px 20px;border-top:2px solid var(--bone);display:flex;justify-content:space-between;font-size:10px;letter-spacing:.16em;text-transform:uppercase;color:var(--bone-faint);font-weight:600}
+
+.stamp{animation:stamp .34s cubic-bezier(.2,1.2,.3,1) both}
+@keyframes stamp{from{opacity:0;transform:translateY(9px) scale(.985);filter:blur(4px)}to{opacity:1;transform:none;filter:blur(0)}}
+
+.empty-card{border:2px dashed var(--line);padding:56px 24px;text-align:center}
+.empty-card p{color:var(--bone-faint);font-size:13px;max-width:30ch;margin:10px auto 0}
+.empty-card .big{font-family:'Saira Condensed',sans-serif;font-weight:900;font-size:40px;color:var(--ink-3);text-transform:uppercase;line-height:.9}
+
+.notice{padding:11px 26px;border-bottom:var(--rule);background:var(--ink-2);font-size:11.5px;color:var(--bone-dim)}
+.notice b{color:var(--hot);letter-spacing:.14em;text-transform:uppercase;font-size:10px;font-weight:700}
+
+footer{position:relative;z-index:2;border-top:2px solid var(--bone);padding:16px 26px;display:flex;justify-content:space-between;gap:16px;flex-wrap:wrap}
+footer a{color:var(--bone-dim);text-decoration:none;border-bottom:1px solid var(--line)}
+footer a:hover{color:var(--hot);border-color:var(--hot)}
+
+::-webkit-scrollbar{width:9px;height:9px}
+::-webkit-scrollbar-track{background:var(--ink)}
+::-webkit-scrollbar-thumb{background:var(--line)}
+::-webkit-scrollbar-thumb:hover{background:var(--bone-faint)}
+:focus-visible{outline:2px solid var(--hot);outline-offset:-2px}
+@media(prefers-reduced-motion:reduce){*{animation-duration:.01ms!important;transition-duration:.01ms!important}}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="brand">
+    <h1 class="display">Slate</h1>
+    <span class="tag">Player Builder</span>
+  </div>
+  <div class="mast-right">
+    <div class="mast-stat"><span class="micro">Slate</span><b id="mDate">—</b></div>
+    <div class="mast-stat"><span class="micro">Games</span><b id="mGames">—</b></div>
+    <div class="mast-stat"><span class="micro">Pool</span><b id="mPool">—</b></div>
+  </div>
+</header>
+
+<div class="ticker"><div id="tick"></div></div>
+
+<main>
+  <section class="left">
+    <div class="notice">
+      <b>Sample slate</b> &nbsp;·&nbsp; Fictional players and generated box scores. The scoring engine is real — it is the same code that will run on live NBA data.
+    </div>
+
+    <div class="sect-head"><h2 class="display">Your six</h2><span class="micro">One player per quality</span></div>
+    <div class="slots" id="slots"></div>
+
+    <div class="sect-head"><h2 class="display" id="poolHead">Tonight's pool</h2><span class="micro" id="poolSub">Select a quality first</span></div>
+    <div class="filters" id="filters"></div>
+    <div class="rows" id="rows"></div>
+
+    <div class="cap">
+      <div class="cap-top">
+        <span class="micro">Average contract</span>
+        <b id="capNum">$0.0M</b>
+      </div>
+      <div class="bar"><i id="capBar" style="width:0%"></i></div>
+    </div>
+
+    <div class="act">
+      <button class="build-btn" id="build" disabled>Fill all six</button>
+      <p class="hint" id="hint">Ratings come from how each player actually performed that night — nobody is guaranteed a good grade.</p>
+    </div>
+  </section>
+
+  <aside class="right">
+    <div class="card-wrap" id="cardWrap">
+      <div class="empty-card">
+        <div class="big">No card<br>yet</div>
+        <p>Fill all six qualities and lock it in. What you get depends entirely on how your picks played.</p>
+      </div>
+    </div>
+  </aside>
+</main>
+
+<footer>
+  <span class="micro">Slate — working title</span>
+  <span class="micro"><a href="/docs">API</a> · Percentile of difficulty-adjusted production</span>
+</footer>
+
+<script>
+const API = '';
+const DATE = '2025-11-14';
+const $ = s => document.querySelector(s);
+const money = n => '$' + (n/1e6).toFixed(1) + 'M';
+
+let SLOTS = [], PLAYERS = [], PICKS = {}, active = null, teamFilter = 'ALL';
+
+async function boot(){
+  const [attrs, slate] = await Promise.all([
+    fetch(API+'/attributes').then(r=>r.json()),
+    fetch(API+'/slates/'+DATE).then(r=>r.json()),
+  ]);
+  SLOTS = attrs; PLAYERS = slate.players;
+  active = SLOTS[0].slot;
+
+  $('#mDate').textContent = slate.date.slice(5);
+  $('#mGames').textContent = slate.games.length;
+  $('#mPool').textContent = slate.players.length;
+
+  const teams = [...new Set(PLAYERS.map(p=>p.team))];
+  $('#tick').innerHTML = [0,1].map(()=>
+    slate.games.map(g=>`<span>${g.away} @ ${g.home}</span>`).join('') +
+    `<span>lock at first tip</span><span>cheapest man on the floor can win a quality</span>`
+  ).join('');
+
+  $('#filters').innerHTML = ['ALL',...teams].map(t=>
+    `<button data-team="${t}" aria-pressed="${t==='ALL'}">${t}</button>`).join('');
+  $('#filters').onclick = e => {
+    const b = e.target.closest('button'); if(!b) return;
+    teamFilter = b.dataset.team;
+    [...$('#filters').children].forEach(x=>x.setAttribute('aria-pressed', x===b));
+    renderRows();
+  };
+
+  renderSlots(); renderRows(); renderCap();
+}
+
+function renderSlots(){
+  $('#slots').innerHTML = SLOTS.map(a=>{
+    const p = PICKS[a.slot];
+    return `<div class="slot" role="button" tabindex="0" data-slot="${a.slot}" aria-selected="${a.slot===active}">
+      <div class="label">${a.label}</div>
+      ${p ? `<div class="filled">${p.name}</div><div class="cost">${p.team} · ${money(p.salary)}</div>
+             <button class="clear" data-clear="${a.slot}" aria-label="Clear ${a.label}">&times;</button>`
+          : `<div class="empty">Empty</div><div class="cost">&nbsp;</div>`}
+    </div>`;
+  }).join('');
+  $('#slots').onclick = e => {
+    const c = e.target.closest('[data-clear]');
+    if(c){ delete PICKS[c.dataset.clear]; refresh(); return; }
+    const s = e.target.closest('[data-slot]');
+    if(s){ active = s.dataset.slot; refresh(); }
+  };
+  $('#slots').onkeydown = e => {
+    if(e.key!=='Enter' && e.key!==' ') return;
+    const s = e.target.closest('[data-slot]');
+    if(s){ e.preventDefault(); active = s.dataset.slot; refresh(); }
+  };
+  const a = SLOTS.find(x=>x.slot===active);
+  $('#poolHead').textContent = a ? 'Pick for ' + a.label : "Tonight's pool";
+  $('#poolSub').textContent = a ? a.guardrail : '';
+}
+
+function renderRows(){
+  const used = new Set(Object.values(PICKS).map(p=>p.player_id));
+  const list = PLAYERS.filter(p => teamFilter==='ALL' || p.team===teamFilter);
+  $('#rows').innerHTML = list.map((p,i)=>{
+    const taken = used.has(p.player_id);
+    return `<button class="row ${taken?'taken':''}" data-id="${p.player_id}" ${taken?'disabled':''}>
+      <span class="no">${String(i+1).padStart(2,'0')}</span>
+      <span><span class="nm">${p.name}</span></span>
+      <span class="tm">${p.team}</span>
+      <span class="sal">${money(p.salary)}</span>
+      <span class="pick">${taken?'used':'pick'}</span>
+    </button>`;
+  }).join('');
+  $('#rows').onclick = e => {
+    const r = e.target.closest('.row'); if(!r || r.disabled) return;
+    const p = PLAYERS.find(x=>x.player_id==r.dataset.id);
+    PICKS[active] = p;
+    const next = SLOTS.find(s=>!PICKS[s.slot]);
+    if(next) active = next.slot;
+    refresh();
+  };
+}
+
+function renderCap(){
+  const picked = Object.values(PICKS);
+  const avg = picked.length ? picked.reduce((a,p)=>a+p.salary,0)/picked.length : 0;
+  $('#capNum').textContent = money(avg);
+  $('#capBar').style.width = Math.min(100, avg/55e6*100) + '%';
+  const done = picked.length === SLOTS.length;
+  const b = $('#build');
+  b.disabled = !done;
+  b.textContent = done ? 'Lock it in' : `Fill all six — ${picked.length}/${SLOTS.length}`;
+}
+
+function refresh(){ renderSlots(); renderRows(); renderCap(); }
+
+$('#build').addEventListener('click', async () => {
+  const b = $('#build'); b.disabled = true; b.textContent = 'Resolving…';
+  try{
+    const res = await fetch(API+'/slates/'+DATE+'/builds', {
+      method:'POST', headers:{'content-type':'application/json'},
+      body: JSON.stringify({
+        creator: 'demo',
+        selections: SLOTS.map(s=>({slot:s.slot, player_id:PICKS[s.slot].player_id}))
+      })
+    });
+    if(!res.ok) throw new Error((await res.json()).detail || res.status);
+    renderCard(await res.json());
+  }catch(err){
+    $('#hint').textContent = 'Could not resolve: ' + err.message;
+  }finally{ renderCap(); }
+});
+
+function renderCard(card){
+  const html = `
+  <div class="card stamp">
+    <div class="card-top">
+      <div class="ovr-block">
+        <span class="ovr" id="ovrNum">0</span>
+        <span class="ovr-lab">Overall</span>
+      </div>
+      <div class="money">
+        <b>${money(card.contract)}</b>
+        <div class="per">per year · ${(card.ovr/(card.contract/1e6)).toFixed(2)} ovr per $M</div>
+      </div>
+    </div>
+    <div class="attrs">
+      ${card.ratings.map((r,i)=>`
+        <div class="attr ${r.rating>=90?'elite':''} ${r.rating===0?'zero':''} stamp" style="animation-delay:${140+i*70}ms">
+          <div>
+            <div class="an">${r.label}</div>
+            <div class="who">${r.player_name}</div>
+            ${r.note?`<div class="note">${r.note}</div>`:''}
+          </div>
+          <div class="rt">${r.rating}</div>
+          <div class="meter"><i data-w="${r.rating}"></i></div>
+        </div>`).join('')}
+    </div>
+    <div class="card-foot"><span>${card.date}</span><span>Slate · sample data</span></div>
+  </div>`;
+  $('#cardWrap').innerHTML = html;
+
+  let n = 0;
+  const target = card.ovr, el = $('#ovrNum');
+  const step = () => { n += Math.max(1, Math.ceil((target-n)/6)); if(n>=target){el.textContent=target;return;} el.textContent=n; requestAnimationFrame(step); };
+  setTimeout(step, 180);
+  setTimeout(()=> document.querySelectorAll('.meter i').forEach(i=> i.style.width = i.dataset.w + '%'), 420);
+  $('#hint').textContent = 'Clear a quality and try a different night for that slot.';
+}
+
+boot().catch(e => { $('#hint').textContent = 'Could not load the slate: ' + e.message; });
+</script>
+</body>
+</html>
