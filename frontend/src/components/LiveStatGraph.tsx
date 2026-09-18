@@ -149,14 +149,14 @@ export default function LiveStatGraph({ ratings }: { ratings: Rating[] }) {
 
       <div className="live-stat-card__head">
         <div>
-          <p className="live-stat-card__title">{metricDef.label} — Game Recap</p>
-          <p className="live-stat-card__subtitle">
-            {rating.player_name} · {rating.label}
-            <span className="final-badge">
-              FINAL: {finalDisplay} {metricDef.unit}
+          <p className="live-stat-card__title">
+            {metricDef.label} Through the Game
+            <span className="total-chip">
+              {finalDisplay} {metricDef.unit}
             </span>
           </p>
-          <p className="live-stat-card__note">Real box score total · in-game shape is illustrative</p>
+          <p className="live-stat-card__subtitle">{rating.player_name} · {rating.label}</p>
+          <p className="live-stat-card__note">Real box score, spread across game time</p>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           {METRICS.map((m) => (
@@ -228,9 +228,6 @@ export default function LiveStatGraph({ ratings }: { ratings: Rating[] }) {
                 />
               </g>
             ))}
-
-            <circle className="final-ring" cx={last.x} cy={last.y} r={7} />
-            <circle className="final-dot" cx={last.x} cy={last.y} r={4.5} />
           </svg>
 
           {hover && (
