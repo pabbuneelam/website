@@ -88,3 +88,43 @@ def test_firestore_satisfies_the_same_contract():
     store.save_card(probe)
     assert store.card("_test:contract") == probe
     assert probe in store.cards("_test")
+
+
+def test_base64_credentials_are_decoded(monkeypatch):
+    """A raw service-account JSON carries a PEM key full of newlines and
+    quotes; base64 is what survives a platform environment variable intact."""
+    import base64
+
+    from slate.store import _credentials_json
+
+    payload = '{"type":"service_account","private_key":"-----BEGIN PRIVATE KEY-----\\nabc\\n"}'
+    monkeypatch.setenv("GOOGLE_APPLICATION_CREDENTIALS_B64",
+                       base64.b64encode(payload.encode()).decode())
+    assert _credentials_json() == payload
+
+
+def test_base64_takes_precedence_over_the_raw_form(monkeypatch):
+    import base64
+
+    from slate.store import _credentials_json
+
+    monkeypatch.setenv("GOOGLE_APPLICATION_CREDENTIALS_JSON", '{"from":"raw"}')
+    monkeypatch.setenv("GOOGLE_APPLICATION_CREDENTIALS_B64",
+                       base64.b64encode(b'{"from":"b64"}').decode())
+    assert _credentials_json() == '{"from":"b64"}'
+
+
+def test_malformed_base64_fails_loudly(monkeypatch):
+    from slate.store import _credentials_json
+
+    monkeypatch.setenv("GOOGLE_APPLICATION_CREDENTIALS_B64", "not!valid!base64")
+    with pytest.raises(RuntimeError, match="not valid base64"):
+        _credentials_json()
+
+
+def test_no_credentials_in_the_environment_is_none(monkeypatch):
+    from slate.store import _credentials_json
+
+    monkeypatch.delenv("GOOGLE_APPLICATION_CREDENTIALS_B64", raising=False)
+    monkeypatch.delenv("GOOGLE_APPLICATION_CREDENTIALS_JSON", raising=False)
+    assert _credentials_json() is None

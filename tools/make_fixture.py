@@ -23,6 +23,18 @@ SEED = 20251114
 # range is where the value hunting happens.
 SALARY_TIERS = [55_000_000, 38_000_000, 24_000_000, 12_000_000, 3_500_000]
 
+# Invented players. The demo is public, and attaching generated statlines to
+# real NBA players would be fabricating a record about a real person.
+SURNAMES = {
+    "BOS": ["Okonkwo", "Rahl", "Vance", "Mbeki", "Toloza"],
+    "NYK": ["Ferreira", "Salib", "Drazen", "Whitlock", "Nakamura"],
+    "DEN": ["Basara", "Olumide", "Kranz", "Petrov", "Ilunga"],
+    "LAL": ["Marchetti", "Adeyemi", "Sorensen", "Quezada", "Baptiste"],
+    "OKC": ["Halvorsen", "Ncube", "Dagher", "Rusk", "Emeka"],
+    "MIN": ["Vasquez", "Traore", "Lindqvist", "Ozols", "Amadi"],
+}
+FIRST_INITIALS = ["A", "D", "J", "K", "M", "R", "T", "C"]
+
 
 def line(rng, pid, name, team, opp, *, minutes=None, scale=1.0, pbp=True, salary=None):
     minutes = rng.uniform(22, 38) if minutes is None else minutes
@@ -96,7 +108,7 @@ def build():
         for team, opp in ((home, away), (away, home)):
             for slot in range(5):
                 pid += 1
-                name = f"{team} Player {slot + 1}"
+                name = f"{FIRST_INITIALS[(pid + slot) % len(FIRST_INITIALS)]}. {SURNAMES[team][slot]}"
                 scale = 1.5 if slot == 0 else 1.0
                 salary = SALARY_TIERS[slot]
                 boxscores.append(line(rng, pid, name, team, opp, scale=scale, salary=salary))

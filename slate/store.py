@@ -8,6 +8,8 @@ optional convenience.
 """
 from __future__ import annotations
 
+import base64
+import binascii
 import json
 import os
 from collections import defaultdict
@@ -70,9 +72,14 @@ class FirestoreStore:
 
         project = project or os.environ["SLATE_FIREBASE_PROJECT"]
         # Serverless hosts have no filesystem to park a key file on, so accept
-        # the service-account JSON inline as well as the usual
+        # the service account inline as well as via the usual
         # GOOGLE_APPLICATION_CREDENTIALS path.
-        raw = os.environ.get("GOOGLE_APPLICATION_CREDENTIALS_JSON")
+        #
+        # Prefer the base64 form. A raw service-account JSON carries a PEM
+        # private key full of newlines, quotes and slashes, and shipping that
+        # through a platform environment variable is a reliable way to break
+        # things in ways that are hard to see.
+        raw = _credentials_json()
         if raw:
             from google.oauth2 import service_account
 
@@ -94,6 +101,19 @@ class FirestoreStore:
         docs = self._db.collection("cards").where("creator", "==", creator).stream()
         found = [_from_dict(d.to_dict()) for d in docs]
         return sorted(found, key=lambda c: c.date, reverse=True)
+
+
+def _credentials_json() -> str | None:
+    """Service-account JSON from the environment, base64 preferred."""
+    encoded = os.environ.get("GOOGLE_APPLICATION_CREDENTIALS_B64")
+    if encoded:
+        try:
+            return base64.b64decode(encoded, validate=True).decode()
+        except (binascii.Error, UnicodeDecodeError) as exc:
+            raise RuntimeError(
+                "GOOGLE_APPLICATION_CREDENTIALS_B64 is not valid base64"
+            ) from exc
+    return os.environ.get("GOOGLE_APPLICATION_CREDENTIALS_JSON")
 
 
 def default_store() -> Store:

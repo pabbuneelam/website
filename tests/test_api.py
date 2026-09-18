@@ -105,15 +105,23 @@ def test_health_reports_which_store_is_live():
     assert body["durable"] is False
 
 
-def test_serverless_without_a_durable_store_refuses_rather_than_misbehaving(monkeypatch):
-    """On a stateless host a card written by one instance is invisible to the
-    next, so an in-memory store silently loses them. Fail loudly."""
+def test_building_works_on_a_stateless_host_even_with_no_durable_store(monkeypatch):
+    """Rating a night is pure computation, so the game stays playable and
+    demoable without persistence."""
     from slate import api
 
     monkeypatch.setattr(api, "ON_SERVERLESS", True)
     response = client.post(f"/slates/{DATE}/builds", json=payload("ghost"))
-    assert response.status_code == 503
-    assert "durable store" in response.json()["detail"]
+    assert response.status_code == 200
+    assert response.json()["ovr"] > 0
+
+
+def test_the_collection_refuses_rather_than_lying_about_what_it_saved(monkeypatch):
+    """A card written to memory on a stateless host is invisible to the next
+    request. Returning an empty collection would look like data loss."""
+    from slate import api
+
+    monkeypatch.setattr(api, "ON_SERVERLESS", True)
     assert client.get("/cards/ghost").status_code == 503
 
 

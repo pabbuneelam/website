@@ -121,8 +121,12 @@ def get_slate(date: str):
 
 @app.post("/slates/{date}/builds")
 def submit_build(date: str, payload: BuildIn):
-    """Fill six slots, get a player card back."""
-    _require_durable_store()
+    """Fill six slots, get a player card back.
+
+    Deliberately does NOT require a durable store. Rating a night is pure
+    computation, so the game is playable and demoable without persistence --
+    only the collection needs somewhere to live.
+    """
     night = _night(date)
 
     build = Build(
@@ -134,7 +138,12 @@ def submit_build(date: str, payload: BuildIn):
         raise HTTPException(422, problem)
 
     card = build_card(build, NightRater(night.boxscores), night.date)
-    get_store().save_card(card)
+    store = get_store()
+    if not isinstance(store, MemoryStore) or not ON_SERVERLESS:
+        # Writing to a MemoryStore on a stateless host is a lie -- the next
+        # request lands elsewhere. Better to hand back the card and say the
+        # collection is off than to pretend it was saved.
+        store.save_card(card)
     return card
 
 
