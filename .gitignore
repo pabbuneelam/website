@@ -18,3 +18,4 @@ frontend/.env.local
 *-sa.json
 .env
 .env.local
+.env*
