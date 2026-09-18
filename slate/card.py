@@ -71,6 +71,14 @@ def build_card(build: Build, rater: NightRater, date: str) -> Card:
                 percentile=percentile,
                 salary=box.salary if box else None,
                 note=note,
+                pts=box.pts if box else 0,
+                reb=box.reb if box else 0,
+                ast=box.ast if box else 0,
+                # A standard points-reb-ast fantasy formula -- not the OVR
+                # scoring, just a familiar single number for the recap chart.
+                fantasy=round(box.pts + 1.2 * box.reb + 1.5 * box.ast + 3 * box.stl + 3 * box.blk - box.tov, 1)
+                if box
+                else 0.0,
             )
         )
 

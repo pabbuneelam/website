@@ -111,6 +111,15 @@ class Rating:
     salary: int | None
     note: str = ""
 
+    # --- raw box score, revealed only once a card exists ------------------
+    # The build screen never shows these (no stats before tip, see api.py) --
+    # a card is the one place "the real performances behind every number"
+    # actually shows up.
+    pts: int = 0
+    reb: int = 0
+    ast: int = 0
+    fantasy: float = 0.0
+
 
 @dataclass(frozen=True)
 class Card:

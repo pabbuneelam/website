@@ -11,8 +11,9 @@ What you get depends entirely on how each of them plays *that night*. Your
 card's contract is the **average of their six real salaries**, so a 94 OVR at
 $14M is a better asset than a 96 at $50M.
 
-See [SLATE.md](SLATE.md) for the full design. This repo currently holds the
-daily loop: attribute engine → player card. No UI yet.
+See [SLATE.md](SLATE.md) for the full design. This repo holds the daily loop
+— attribute engine → player card — plus a React frontend for it in
+`frontend/`.
 
 ## Run it
 
@@ -23,6 +24,19 @@ python -m venv .venv && .venv/bin/pip install -e ".[dev]"
 .venv/bin/python -m slate build 2025-11-14     # build a card from the fixture
 .venv/bin/uvicorn slate.api:app --reload       # http://127.0.0.1:8000/docs
 ```
+
+With the API running, in another shell:
+
+```sh
+cd frontend
+npm install
+npm run dev                                    # http://localhost:5173
+```
+
+The dev server proxies `/attributes`, `/slates`, `/cards`, `/health` straight
+to `127.0.0.1:8000` (see `frontend/vite.config.ts`) — no env vars needed
+locally. For a production build against a deployed backend, set
+`VITE_API_BASE` (see `frontend/.env.example`).
 
 ```
   Slate — created 2025-11-14
