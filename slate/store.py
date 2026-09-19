@@ -306,7 +306,8 @@ class FirestoreStore:
         return _from_dict(doc.to_dict()) if doc.exists else None
 
     def cards(self, uid: str) -> list[Card]:
-        docs = self._db.collection("cards").where("uid", "==", uid).stream()
+        from google.cloud.firestore_v1.base_query import FieldFilter
+        docs = self._db.collection("cards").where(filter=FieldFilter("uid", "==", uid)).stream()
         found = [_from_dict(d.to_dict()) for d in docs]
         return sorted(found, key=lambda c: c.date, reverse=True)
 
@@ -331,10 +332,11 @@ class FirestoreStore:
         return League(**doc.to_dict()) if doc.exists else None
 
     def league_by_code(self, code: str) -> League | None:
+        from google.cloud.firestore_v1.base_query import FieldFilter
         # Single-field equality needs no composite index, same as cards().
         docs = (
             self._db.collection("leagues")
-            .where("code", "==", _normalise_code(code))
+            .where(filter=FieldFilter("code", "==", _normalise_code(code)))
             .limit(1)
             .stream()
         )
@@ -356,9 +358,10 @@ class FirestoreStore:
         self._db.collection("memberships").document(uid).delete()
 
     def members(self, league_id: str) -> list[Membership]:
+        from google.cloud.firestore_v1.base_query import FieldFilter
         docs = (
             self._db.collection("memberships")
-            .where("league_id", "==", league_id)
+            .where(filter=FieldFilter("league_id", "==", league_id))
             .stream()
         )
         found = [Membership(**d.to_dict()) for d in docs]
@@ -372,6 +375,7 @@ class FirestoreStore:
         return Trade(**doc.to_dict()) if doc.exists else None
 
     def trades(self, uid: str) -> list[Trade]:
+        from google.cloud.firestore_v1.base_query import FieldFilter
         # Two single-field equality queries rather than one OR, so this needs
         # no composite index -- same reason cards() and league_by_code() are
         # shaped the way they are. A user is on at most one side of a trade,
@@ -380,7 +384,7 @@ class FirestoreStore:
         found = [
             Trade(**d.to_dict())
             for field in ("proposer_uid", "recipient_uid")
-            for d in collection.where(field, "==", uid).stream()
+            for d in collection.where(filter=FieldFilter(field, "==", uid)).stream()
         ]
         return sorted(found, key=lambda t: t.created_at, reverse=True)
 
