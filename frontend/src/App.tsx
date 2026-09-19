@@ -8,6 +8,7 @@ import DatePicker from './components/DatePicker'
 import AccountBar from './components/AccountBar'
 import Account from './components/Account'
 import League from './components/League'
+import Chat from './components/Chat'
 import { useAuth } from './useAuth'
 
 const DEFAULT_DATE = '2025-11-14' // the only date with fixture data today
@@ -16,7 +17,7 @@ const DEFAULT_DATE = '2025-11-14' // the only date with fixture data today
 // config and real URLs for what is still a single screen with a sidebar's
 // worth of state -- when there are shareable pages (a league, another user's
 // collection) that trade flips, and this is where it flips.
-type Tab = 'build' | 'collection' | 'league' | 'account'
+type Tab = 'build' | 'collection' | 'league' | 'messages' | 'account'
 
 export default function App() {
   const { user, loading: authLoading } = useAuth()
@@ -96,7 +97,20 @@ export default function App() {
   return (
     <div className="app">
       <header className="app__header">
-        <AccountBar user={user} loading={authLoading} onOpenAccount={() => setTab('account')} />
+        {/* Top right of the masthead: messages sits beside the account
+            control, because that is where a signed-in user looks for
+            anything addressed to them. */}
+        <div className="masthead-controls">
+          {user && (
+            <button
+              className={activeTab === 'messages' ? 'messages-launch messages-launch--active' : 'messages-launch'}
+              onClick={() => setTab('messages')}
+            >
+              Messages
+            </button>
+          )}
+          <AccountBar user={user} loading={authLoading} onOpenAccount={() => setTab('account')} />
+        </div>
         <h1>Slate</h1>
         <p className="app__tagline">Build a player out of tonight's real performances.</p>
       </header>
@@ -197,6 +211,12 @@ export default function App() {
       {activeTab === 'account' && user && (
         <main>
           <Account user={user} />
+        </main>
+      )}
+
+      {activeTab === 'messages' && user && (
+        <main>
+          <Chat user={user} />
         </main>
       )}
     </div>

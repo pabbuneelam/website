@@ -626,3 +626,200 @@ main > p{font-style:italic;color:var(--ink-soft);padding:12px 0}
   *{animation-duration:.01ms!important;animation-delay:0ms!important;transition-duration:.01ms!important}
   .hero-line{stroke-dashoffset:0}
 }
+
+/* ---------------- masthead controls ---------------- */
+/* The account bar used to own the top-right corner alone. It now shares it
+   with the messages launcher, so the absolute positioning moves up one level
+   and .account-bar goes along for the ride. Additive: the account bar's own
+   rules are untouched. */
+.masthead-controls{
+  position:absolute;top:34px;right:0;z-index:80;
+  display:flex;align-items:center;gap:10px;
+}
+.masthead-controls .account-bar{position:static;z-index:auto}
+
+.messages-launch{
+  background:var(--paper-2);color:var(--ink);border:var(--rule);
+  font-family:var(--display);font-weight:900;text-transform:uppercase;
+  font-size:17px;letter-spacing:.1em;padding:7px 18px;
+  transition:transform .12s ease,box-shadow .12s ease;
+}
+.messages-launch:hover{transform:translate(-2px,-2px);box-shadow:var(--press)}
+.messages-launch:active{transform:none;box-shadow:none}
+.messages-launch--active{background:var(--ink);color:var(--paper)}
+
+@media(max-width:640px){
+  .masthead-controls{position:static;justify-content:flex-end;padding-top:24px}
+  .masthead-controls .account-bar{padding-top:0}
+  .messages-launch{font-size:15px;padding:6px 13px}
+}
+
+/* ---------------- messages ---------------- */
+.chat{
+  display:grid;
+  grid-template-columns:minmax(0,300px) minmax(0,1fr);
+  border:var(--rule);
+  background:var(--paper-2);
+  min-height:520px;
+}
+
+.chat-list{
+  border-right:var(--rule);
+  display:flex;flex-direction:column;
+  max-height:600px;overflow-y:auto;
+}
+.chat-list__head{
+  display:flex;align-items:center;justify-content:space-between;gap:10px;
+  padding:12px 14px;border-bottom:var(--rule);
+  position:sticky;top:0;background:var(--paper-2);z-index:1;
+}
+.chat-list__title{font-size:25px;letter-spacing:.02em}
+.chat-list__new{
+  background:var(--red);color:var(--paper);border:var(--rule);
+  font-family:var(--display);font-weight:900;text-transform:uppercase;
+  font-size:14px;letter-spacing:.1em;padding:4px 12px;
+  transition:transform .12s ease,box-shadow .12s ease;
+}
+.chat-list__new:hover{transform:translate(-2px,-2px);box-shadow:var(--press)}
+
+.chat-row{
+  display:flex;align-items:center;gap:10px;width:100%;text-align:left;
+  background:transparent;border:0;border-bottom:var(--hair);
+  padding:10px 14px;transition:background .12s ease;
+}
+.chat-row:hover{background:var(--paper-3)}
+.chat-row--active{background:var(--ink)}
+.chat-row--active .chat-row__name,
+.chat-row--active .chat-row__preview,
+.chat-row--active .chat-row__when{color:var(--paper)}
+.chat-row--active .chat-row__avatar--initial{background:var(--paper);color:var(--ink)}
+.chat-row__avatar{
+  width:34px;height:34px;flex-shrink:0;object-fit:cover;border:var(--hair);
+  /* Two colours only -- same reason as the account bar. */
+  filter:grayscale(1) contrast(1.15);
+}
+.chat-row__avatar--initial{
+  display:grid;place-items:center;background:var(--ink);color:var(--paper);
+  font-family:var(--display);font-weight:900;font-size:18px;text-transform:uppercase;
+  filter:none;
+}
+.chat-row__body{display:flex;flex-direction:column;min-width:0;flex:1}
+.chat-row__name{
+  font-family:var(--display);font-weight:700;text-transform:uppercase;
+  font-size:17px;letter-spacing:.04em;
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+}
+.chat-row__preview{
+  font-size:14px;color:var(--ink-soft);font-style:italic;
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+}
+.chat-row__when{
+  font-family:var(--display);font-weight:700;font-size:12px;
+  letter-spacing:.08em;color:var(--ink-faint);flex-shrink:0;
+}
+
+.chat-directory{border-bottom:var(--rule);padding-bottom:8px}
+.chat-directory__label{
+  font-family:var(--display);font-weight:700;text-transform:uppercase;
+  font-size:12px;letter-spacing:.16em;color:var(--red);
+  padding:10px 14px 6px;
+}
+.chat-directory__cancel{
+  background:transparent;border:0;margin:8px 14px 0;
+  font-family:var(--display);font-weight:700;text-transform:uppercase;
+  font-size:13px;letter-spacing:.1em;color:var(--ink-faint);
+}
+.chat-directory__cancel:hover{color:var(--red)}
+
+.chat-thread{
+  display:flex;flex-direction:column;min-width:0;
+  background:var(--paper);position:relative;
+}
+.chat-thread--empty{align-items:center;justify-content:center}
+.chat-thread__head{
+  display:flex;align-items:center;gap:11px;
+  padding:11px 16px;border-bottom:var(--rule);background:var(--paper-2);
+}
+.chat-thread__back{
+  display:none;background:transparent;border:var(--hair);
+  width:30px;height:30px;place-items:center;font-size:16px;flex-shrink:0;
+}
+.chat-thread__avatar{
+  width:32px;height:32px;flex-shrink:0;object-fit:cover;border:var(--hair);
+  filter:grayscale(1) contrast(1.15);
+}
+.chat-thread__avatar--initial{
+  display:grid;place-items:center;background:var(--ink);color:var(--paper);
+  font-family:var(--display);font-weight:900;font-size:18px;text-transform:uppercase;
+  filter:none;
+}
+.chat-thread__name{
+  font-size:25px;letter-spacing:.02em;
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+}
+
+.chat-thread__scroll{
+  flex:1;overflow-y:auto;padding:16px;
+  display:flex;flex-direction:column;gap:9px;
+  min-height:280px;max-height:460px;
+}
+
+.chat-msg{display:flex;justify-content:flex-start}
+.chat-msg--mine{justify-content:flex-end}
+.chat-msg__bubble{
+  max-width:min(72%,54ch);
+  border:var(--rule);background:var(--paper-2);
+  padding:8px 12px 6px;
+}
+.chat-msg--mine .chat-msg__bubble{
+  background:var(--ink);color:var(--paper);box-shadow:var(--press);
+}
+.chat-msg__text{white-space:pre-wrap;overflow-wrap:anywhere;font-size:16px;line-height:1.45}
+.chat-msg__stamp{
+  display:block;margin-top:3px;
+  font-family:var(--display);font-weight:700;font-size:11px;
+  letter-spacing:.12em;text-transform:uppercase;color:var(--ink-faint);
+}
+.chat-msg--mine .chat-msg__stamp{color:var(--paper-3);text-align:right}
+
+.chat-thread__jump{
+  position:absolute;right:18px;bottom:76px;
+  background:var(--red);color:var(--paper);border:var(--rule);
+  font-family:var(--display);font-weight:900;text-transform:uppercase;
+  font-size:13px;letter-spacing:.1em;padding:5px 12px;box-shadow:var(--press);
+}
+
+.chat-compose{
+  display:flex;gap:9px;padding:11px 14px;
+  border-top:var(--rule);background:var(--paper-2);
+}
+.chat-compose__input{
+  flex:1;min-width:0;background:var(--paper);border:var(--rule);
+  padding:9px 12px;font-size:16px;
+}
+.chat-compose__send{
+  background:var(--red);color:var(--paper);border:var(--rule);
+  font-family:var(--display);font-weight:900;text-transform:uppercase;
+  font-size:16px;letter-spacing:.1em;padding:7px 20px;
+  transition:transform .12s ease,box-shadow .12s ease;
+}
+.chat-compose__send:not(:disabled):hover{transform:translate(-2px,-2px);box-shadow:var(--press)}
+.chat-compose__send:disabled{
+  background:var(--paper-3);color:var(--ink-faint);
+  border-color:var(--ink-faint);cursor:not-allowed;
+}
+
+.chat__note{font-style:italic;color:var(--ink-soft);padding:12px 14px;font-size:15px}
+.chat__note--warn{color:var(--red)}
+.chat__error{margin:10px 14px}
+
+/* One pane at a time on a phone: a 300px list beside a thread leaves neither
+   readable. The back button only exists at this width. */
+@media(max-width:720px){
+  .chat{grid-template-columns:minmax(0,1fr);min-height:0}
+  .chat-list{border-right:0;border-bottom:var(--rule);max-height:none}
+  .chat--open .chat-list{display:none}
+  .chat:not(.chat--open) .chat-thread{display:none}
+  .chat-thread__back{display:grid}
+  .chat-thread__scroll{max-height:none;height:56vh}
+}

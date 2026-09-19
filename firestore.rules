@@ -1,0 +1,148 @@
+rules_version = '2';
+
+// Slate — Firestore security rules.
+//
+// These rules are the only thing standing between the browser and the
+// database. The messaging prototype talks to Firestore *directly* from the
+// client SDK (real-time `onSnapshot` listeners; polling the FastAPI backend
+// would not be real time), so "the backend checks it" is not available here —
+// every invariant has to be expressed below.
+//
+// The FastAPI backend uses the Admin SDK, which bypasses rules entirely. So
+// denying client writes to `users` and `cards` costs the server nothing.
+//
+// Deploy (manually — nothing here deploys it for you):
+//   firebase deploy --only firestore:rules --project questly-7f3a2
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ---------------------------------------------------------------
+    // Helpers
+    // ---------------------------------------------------------------
+
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    // The longest message the client is allowed to store. Mirrored by
+    // MAX_MESSAGE_LENGTH in frontend/src/chat.ts — this copy is the one that
+    // actually enforces it, because the client copy is editable by anyone
+    // with devtools open.
+    function validText(text) {
+      return text is string
+          && text.size() <= 1000
+          // Rejects empty *and* whitespace-only: at least one non-whitespace
+          // character must be present. `matches` is implicitly anchored, so
+          // this is "anything, a non-space, anything".
+          && text.matches('[\\s\\S]*[^\\s][\\s\\S]*');
+    }
+
+    function participantsOf(convId) {
+      return get(/databases/$(database)/documents/conversations/$(convId)).data.participants;
+    }
+
+    function isParticipantOf(convId) {
+      return signedIn() && request.auth.uid in participantsOf(convId);
+    }
+
+    // ---------------------------------------------------------------
+    // users/{uid} — written by the backend (Admin SDK), never by a browser.
+    // Readable by any signed-in user because the "start a conversation"
+    // picker needs a directory of who else is here. A uid, a display name
+    // and an avatar are already public to the app; nothing secret lives here.
+    // ---------------------------------------------------------------
+    match /users/{uid} {
+      allow read: if signedIn();
+      allow write: if false;
+    }
+
+    // ---------------------------------------------------------------
+    // conversations/{convId} — exactly two participants, 1-on-1.
+    //
+    // The id is deterministic: the two uids sorted and joined with "__".
+    // That is what stops the same pair from accumulating duplicate threads,
+    // and it is enforced here rather than trusted from the client — otherwise
+    // someone could create `alice__bob` holding [alice, mallory].
+    // ---------------------------------------------------------------
+    match /conversations/{convId} {
+
+      function participants() {
+        return request.resource.data.participants;
+      }
+
+      function wellFormed() {
+        return participants() is list
+            && participants().size() == 2
+            // Sorted, so the pair maps to exactly one id, and distinct, so
+            // nobody opens a thread with themselves.
+            && participants()[0] < participants()[1]
+            && convId == participants()[0] + '__' + participants()[1]
+            // The creator must be one of the two. No opening threads between
+            // other people.
+            && request.auth.uid in participants();
+      }
+
+      // Only the two participants can see the thread exists, or its preview.
+      allow read: if signedIn() && request.auth.uid in resource.data.participants;
+
+      allow create: if signedIn() && wellFormed();
+
+      // Updates carry the last-message preview and its timestamp. The
+      // participant list itself is frozen: a thread cannot be handed to a
+      // third party after the fact.
+      allow update: if signedIn()
+                    && request.auth.uid in resource.data.participants
+                    && participants() == resource.data.participants;
+
+      // Out of scope for the prototype, and deleting a thread out from under
+      // the other person is not something one participant should decide.
+      allow delete: if false;
+
+      // -------------------------------------------------------------
+      // …/messages/{messageId} — one document per message. Never an array on
+      // the conversation, so a long thread is paged, not re-read whole on
+      // every write.
+      // -------------------------------------------------------------
+      match /messages/{messageId} {
+
+        allow read: if isParticipantOf(convId);
+
+        allow create: if isParticipantOf(convId)
+                      // A sender cannot spoof another uid: the stored author
+                      // must be the authenticated caller. This is the check
+                      // that makes the rendered "from" line trustworthy.
+                      && request.resource.data.senderId == request.auth.uid
+                      && validText(request.resource.data.text)
+                      // Ordering is by server clock, not the sender's. Client
+                      // clocks are wrong, sometimes deliberately, and a
+                      // forged future timestamp would pin a message to the
+                      // bottom of the thread forever. `serverTimestamp()`
+                      // resolves to exactly `request.time`.
+                      && request.resource.data.createdAt == request.time
+                      // No extra fields smuggled in.
+                      && request.resource.data.keys().hasOnly(['senderId', 'text', 'createdAt']);
+
+        // No editing and no deletion in this prototype. Denying update
+        // outright is the strongest possible form of "senderId is immutable"
+        // — there is no write path that can ever change it.
+        allow update, delete: if false;
+      }
+    }
+
+    // ---------------------------------------------------------------
+    // cards/{cardId} — built and stored server-side through the Admin SDK,
+    // which is not subject to these rules. The browser has no business
+    // writing one, and reads go through the public /cards endpoints.
+    // ---------------------------------------------------------------
+    match /cards/{cardId} {
+      allow read, write: if false;
+    }
+
+    // Anything not named above is denied. New collections have to opt in
+    // here deliberately.
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}
