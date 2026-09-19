@@ -477,6 +477,99 @@ button{cursor:pointer}
 }
 .collection__list{display:flex;flex-direction:column;gap:36px}
 
+/* ---------------- league ---------------- */
+/* No `filter` anywhere below -- see the note on @keyframes press. */
+.league{animation:press .5s ease both}
+
+.league__blurb{
+  font-style:italic;color:var(--ink-soft);font-size:17px;
+  max-width:52ch;padding-bottom:26px;border-bottom:var(--rule);margin-bottom:30px;
+}
+
+.league__entry{margin-bottom:34px}
+.league__entry-title{font-size:27px;margin-bottom:13px}
+.league__form{display:flex;align-items:stretch;gap:14px;flex-wrap:wrap}
+.league__form input{
+  background:transparent;border:0;border-bottom:var(--rule);
+  padding:5px 2px;min-width:250px;
+  font-family:var(--display);font-weight:700;font-size:27px;
+  letter-spacing:.06em;
+}
+.league__code-input{text-transform:uppercase;font-variant-numeric:tabular-nums}
+.league__name-input{letter-spacing:.01em}
+.league__form input::placeholder{
+  color:var(--ink-faint);text-transform:none;letter-spacing:0;
+  font-family:var(--body);font-style:italic;font-size:17px;font-weight:400;
+}
+.league__form input:focus{outline:0;border-bottom-color:var(--red)}
+.league__form button{
+  background:var(--red);color:var(--paper);border:var(--rule);
+  font-family:var(--display);font-weight:900;text-transform:uppercase;
+  font-size:23px;letter-spacing:.05em;padding:8px 30px;
+  transition:transform .12s ease,box-shadow .12s ease;
+}
+.league__form button:not(:disabled):hover{transform:translate(-3px,-3px);box-shadow:var(--press)}
+.league__form button:not(:disabled):active{transform:none;box-shadow:none}
+.league__form button:disabled{
+  background:var(--paper-3);color:var(--ink-faint);
+  border-color:var(--ink-faint);cursor:not-allowed;
+}
+
+.league__head{
+  display:flex;justify-content:space-between;align-items:flex-end;
+  gap:26px;flex-wrap:wrap;
+  padding-bottom:20px;border-bottom:6px double var(--ink);margin-bottom:26px;
+}
+.league__eyebrow{
+  font-family:var(--display);font-weight:700;text-transform:uppercase;
+  font-size:12px;letter-spacing:.24em;color:var(--ink-faint);margin-bottom:5px;
+}
+.league__name{font-size:54px;line-height:.86}
+@media(max-width:640px){.league__name{font-size:38px}}
+.league__invite{text-align:right}
+.league__code{
+  background:var(--ink);color:var(--paper);border:var(--rule);
+  font-family:var(--display);font-weight:900;font-size:36px;
+  letter-spacing:.2em;padding:6px 8px 6px 20px;
+  font-variant-numeric:tabular-nums;
+  transition:transform .12s ease,box-shadow .12s ease,background .12s ease;
+}
+.league__code:hover{background:var(--red);border-color:var(--red);transform:translate(-2px,-2px);box-shadow:var(--press)}
+.league__copied{
+  font-family:var(--display);font-weight:700;text-transform:uppercase;
+  font-size:11px;letter-spacing:.2em;color:var(--ink-faint);margin-top:6px;
+}
+
+.league__members{border:var(--rule);background:var(--paper-2);margin-bottom:28px;width:100%}
+.league__members th{background:transparent;color:var(--ink-soft);border-bottom:var(--hair)}
+.league__members tr:last-child td{border-bottom:0}
+.league__tag{
+  margin-left:10px;
+  font-family:var(--display);font-weight:700;text-transform:uppercase;
+  font-size:11px;letter-spacing:.18em;color:var(--ink-faint);
+  border:var(--hair);padding:1px 7px;
+}
+.league__tag--you{color:var(--red);border-color:var(--red)}
+
+.league__actions{display:flex;align-items:center;gap:18px;flex-wrap:wrap}
+.league__leave{
+  background:transparent;color:var(--ink);border:var(--rule);
+  font-family:var(--display);font-weight:900;text-transform:uppercase;
+  font-size:21px;letter-spacing:.08em;padding:10px 28px;
+  transition:background .12s ease,color .12s ease,transform .12s ease,box-shadow .12s ease;
+}
+.league__leave:not(:disabled):hover{background:var(--red);color:var(--paper);border-color:var(--red);transform:translate(-2px,-2px);box-shadow:var(--press)}
+.league__leave:disabled{color:var(--ink-faint);border-color:var(--ink-faint);cursor:not-allowed}
+
+/* The one way into a league from the screen people land on. */
+.join-league-link{
+  background:transparent;color:var(--ink);border:var(--rule);
+  font-family:var(--display);font-weight:900;text-transform:uppercase;
+  font-size:21px;letter-spacing:.08em;padding:9px 24px;
+  transition:background .12s ease,color .12s ease,transform .12s ease,box-shadow .12s ease;
+}
+.join-league-link:hover{background:var(--ink);color:var(--paper);transform:translate(-2px,-2px);box-shadow:var(--press)}
+
 /* ---------------- date picker ---------------- */
 .date-picker{position:relative}
 .date-picker__trigger{

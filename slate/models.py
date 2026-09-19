@@ -169,3 +169,40 @@ class UserProfile:
     email: str | None = None
     photo_url: str | None = None
     created_at: str = ""       # ISO 8601 UTC, set once and never rewritten
+
+
+@dataclass(frozen=True)
+class League:
+    """A group of players, joined by invite code.
+
+    One league holds many users; a user belongs to exactly one league at a
+    time (see `Membership`), so there is no team layer here -- `uid` keys
+    everything league-scoped, exactly as it keys a card.
+
+    ``code`` is the whole join flow: there is no browse, no discovery and no
+    moderation surface, so the code is the only way in and is meant to be
+    pasted into a group chat.
+    """
+
+    league_id: str
+    name: str
+    code: str
+    owner_uid: str
+    created_at: str = ""       # ISO 8601 UTC
+
+
+@dataclass(frozen=True)
+class Membership:
+    """One user's place in one league.
+
+    Keyed by uid alone, which is what enforces "exactly one league at a time"
+    structurally rather than by checking: there is nowhere to put a second
+    one.
+    """
+
+    uid: str
+    league_id: str
+    # Denormalised like Card.creator_name -- a roster has to name its members
+    # without a read per member. A snapshot; the profile is current truth.
+    display_name: str = ""
+    joined_at: str = ""        # ISO 8601 UTC

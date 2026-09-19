@@ -16,7 +16,7 @@ from dataclasses import asdict, replace
 from datetime import datetime, timezone
 from typing import Protocol
 
-from .models import Card, Rating, UserProfile
+from .models import Card, League, Membership, Rating, UserProfile
 
 
 def _to_dict(card: Card) -> dict:
@@ -29,6 +29,11 @@ def _from_dict(raw: dict) -> Card:
     data = dict(raw)
     data["ratings"] = tuple(Rating(**r) for r in raw.get("ratings", []))
     return Card(**data)
+
+
+def _normalise_code(code: str) -> str:
+    """Codes are stored and compared upper-case, stripped. People type them."""
+    return code.strip().upper()
 
 
 def _now() -> str:
@@ -55,6 +60,34 @@ class Store(Protocol):
         """
         ...
 
+    # --- leagues ------------------------------------------------------
+    # A user belongs to exactly one league at a time, so a membership is
+    # keyed by uid alone. That is the rule expressed as a data shape:
+    # there is nowhere to put a second one.
+
+    def save_league(self, league: League) -> None: ...
+
+    def league(self, league_id: str) -> League | None: ...
+
+    def league_by_code(self, code: str) -> League | None:
+        """The league an invite code opens, or None. Case-insensitive --
+        codes get typed by hand."""
+        ...
+
+    def save_membership(self, membership: Membership) -> None: ...
+
+    def membership(self, uid: str) -> Membership | None:
+        """The one league this user is in, or None."""
+        ...
+
+    def remove_membership(self, uid: str) -> None:
+        """Leave. A no-op if the user is not in a league."""
+        ...
+
+    def members(self, league_id: str) -> list[Membership]:
+        """Everyone in one league, oldest member first."""
+        ...
+
 
 class MemoryStore:
     """Default. No credentials, no network, forgets everything on restart."""
@@ -62,6 +95,8 @@ class MemoryStore:
     def __init__(self) -> None:
         self._cards: dict[str, Card] = {}
         self._users: dict[str, UserProfile] = {}
+        self._leagues: dict[str, League] = {}
+        self._memberships: dict[str, Membership] = {}
 
     def save_card(self, card: Card) -> None:
         self._cards[card.card_id] = card
@@ -82,12 +117,38 @@ class MemoryStore:
         self._users[profile.uid] = stored
         return stored
 
+    def save_league(self, league: League) -> None:
+        self._leagues[league.league_id] = league
+
+    def league(self, league_id: str) -> League | None:
+        return self._leagues.get(league_id)
+
+    def league_by_code(self, code: str) -> League | None:
+        wanted = _normalise_code(code)
+        return next((lg for lg in self._leagues.values() if lg.code == wanted), None)
+
+    def save_membership(self, membership: Membership) -> None:
+        self._memberships[membership.uid] = membership
+
+    def membership(self, uid: str) -> Membership | None:
+        return self._memberships.get(uid)
+
+    def remove_membership(self, uid: str) -> None:
+        self._memberships.pop(uid, None)
+
+    def members(self, league_id: str) -> list[Membership]:
+        found = [m for m in self._memberships.values() if m.league_id == league_id]
+        return sorted(found, key=lambda m: (m.joined_at, m.uid))
+
 
 class FirestoreStore:
     """Firebase project questly-7f3a2.
 
-        cards/{card_id}    one created player, id "{date}:{uid}"
-        users/{uid}        one signed-in person
+        cards/{card_id}        one created player, id "{date}:{uid}"
+        users/{uid}            one signed-in person
+        leagues/{league_id}    one league, carrying its invite code
+        memberships/{uid}      which league that user is in -- at most one,
+                               which is why the uid is the document id
 
     Auth is a service account, so security rules are bypassed -- this is server
     side. Rules only start mattering when a browser reads these directly.
@@ -140,6 +201,47 @@ class FirestoreStore:
         stored = replace(profile, created_at=existing.created_at if existing else _now())
         self._db.collection("users").document(profile.uid).set(asdict(stored))
         return stored
+
+    def save_league(self, league: League) -> None:
+        self._db.collection("leagues").document(league.league_id).set(asdict(league))
+
+    def league(self, league_id: str) -> League | None:
+        doc = self._db.collection("leagues").document(league_id).get()
+        return League(**doc.to_dict()) if doc.exists else None
+
+    def league_by_code(self, code: str) -> League | None:
+        # Single-field equality needs no composite index, same as cards().
+        docs = (
+            self._db.collection("leagues")
+            .where("code", "==", _normalise_code(code))
+            .limit(1)
+            .stream()
+        )
+        return next((League(**d.to_dict()) for d in docs), None)
+
+    def save_membership(self, membership: Membership) -> None:
+        self._db.collection("memberships").document(membership.uid).set(
+            asdict(membership)
+        )
+
+    def membership(self, uid: str) -> Membership | None:
+        doc = self._db.collection("memberships").document(uid).get()
+        return Membership(**doc.to_dict()) if doc.exists else None
+
+    def remove_membership(self, uid: str) -> None:
+        # The only delete in this file. A membership is a join, not an
+        # artifact -- leaving a league has to actually remove it, or the next
+        # join would find the user still in the old one.
+        self._db.collection("memberships").document(uid).delete()
+
+    def members(self, league_id: str) -> list[Membership]:
+        docs = (
+            self._db.collection("memberships")
+            .where("league_id", "==", league_id)
+            .stream()
+        )
+        found = [Membership(**d.to_dict()) for d in docs]
+        return sorted(found, key=lambda m: (m.joined_at, m.uid))
 
 
 def _credentials_json() -> str | None:
