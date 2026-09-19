@@ -224,6 +224,38 @@ ANTHROPIC_API_KEY=sk-... ../../.venv/bin/python review.py
 a message and exits 0 — screenshot capture works standalone without an API
 key; only the AI review step is skipped.
 
+## Messaging
+
+1-on-1, plain text, real time. The browser talks to **Firestore directly**
+through the client SDK — a message has to land on the other screen without
+anyone pressing anything, and a poll against FastAPI is not that. The backend
+is not in this path at all.
+
+```
+conversations/{a__b}                     the two participants + last-message preview
+conversations/{a__b}/messages/{msgId}    one document per message
+```
+
+The conversation id is both uids **sorted and joined**, so "Alice messages Bob"
+and "Bob messages Alice" are one thread rather than two half-empty ones. One
+document per message, never an array on the conversation: an array is rewritten
+whole on every send, races two senders against each other, and caps the thread
+at the 1 MiB document limit. Ordering is `serverTimestamp()` — client clocks are
+wrong by accident often, and on purpose easily. A thread opens with the latest
+50 and nothing older.
+
+Because there is no server in the path, **`firestore.rules` is the enforcement**:
+only the two participants can read or write a conversation, `senderId` must
+equal `request.auth.uid` on create, messages can never be updated or deleted,
+and the max length is checked there rather than only in the input.
+
+```sh
+firebase deploy --only firestore:rules --project questly-7f3a2
+```
+
+Until those rules are live every listener fails with `permission-denied` — that
+is the expected symptom, not a bug in the UI.
+
 ## Next
 
 Collection → roster + payroll cap → waivers and free agency → trades (players,
