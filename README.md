@@ -93,6 +93,29 @@ Two consequences worth knowing:
 | `slate/auth.py` | Firebase ID token in, verified uid out. |
 | `slate/api.py` | The HTTP surface. Public reads, authenticated writes. |
 | `tools/make_fixture.py` | Regenerates the committed fixture. Seeded. |
+| `tools/ingest_nba.py` | Pulls one real slate from stats.nba.com. Free, offline. |
+| `tools/attach_salaries.py` | Joins a salary table onto a slate by NBA person id. |
+
+## Salaries
+
+A card's contract is the average of six real salaries, so this field matters.
+stats.nba.com does not publish it, and **no free source exists whose terms
+permit building on it** — Basketball-Reference's data-use page says in so many
+words not to build tools on scraped SR data, Spotrac and RealGM 403 every
+non-browser client, HoopsHype no longer publishes past seasons, the NBA
+publishes cap thresholds but not player pay, Wikidata has two salary statements
+in total, and the open-licensed datasets that do have coverage are relabelled
+scrapes of those same sites.
+
+So `tools/attach_salaries.py` bundles no scraper. It takes a salary table you
+supply and does the hard part — joining a name string onto an NBA person id via
+the roster bundled inside `nba_api`, with two exact passes and no fuzzy
+matching. Unmatched players stay `null`, never `0`, because `slate/card.py`
+excludes nulls from the contract average so missing data cannot masquerade as a
+bargain.
+
+**[docs/salary-sources.md](docs/salary-sources.md)** has the full source-by-source
+comparison, the terms quoted verbatim, and the measured match rate.
 
 ## Data tiers
 
