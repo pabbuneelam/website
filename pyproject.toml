@@ -15,6 +15,8 @@ dependencies = [
 
 [project.optional-dependencies]
 dev = ["pytest>=8", "httpx>=0.27"]
+# Offline ingestion only -- never imported by the API.
+ingest = ["nba_api>=1.4"]
 
 [tool.vercel]
 # Vercel loads `app` from slate/api.py. Without this it would look for
