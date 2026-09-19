@@ -46,6 +46,19 @@ An initial version uses six, to keep a daily build quick. Each has a metric that
 | Perimeter Defense | FGs prevented vs the man he guarded + deflections | min 10 matchup minutes |
 | Interior Defense | rim FGs prevented + blocks | min 3 rim FGA defended |
 
+**Every attribute is meant to weigh several factors, not one stat.** The table
+above is the starting set, deliberately thin: it is what the free data supports
+today and what the engine needs to be correct. Each row is expected to grow into
+a composite. Outside Shooting should eventually fold in shot zone, defender
+proximity and pull-up versus catch-and-shoot; Playmaking should weigh potential
+assists, passes made and the quality of the looks created, not just assists
+minus turnovers; Rebounding should separate contested from uncontested chances
+and credit box-outs that lead to a teammate's board.
+
+Adding a factor is a change to one metric function in `slate/attributes.py` and
+nothing else -- the engine only ever sees a single number per player per
+attribute, so composites drop in without touching scoring, cards or storage.
+
 **Rebounding is the clearest illustration of the whole design.** Twelve boards from thirty chances is a worse night than eight from twelve. Volume stats reward opportunity; this rewards the player.
 
 Later candidates: Midrange, Shot Creation, Off-Ball Movement, Screen Navigation, Decision Making. Each is a row in `slate/attributes.py` plus a metric function — the engine does not change.
