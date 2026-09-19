@@ -6,12 +6,13 @@ import os
 
 import pytest
 
-from slate.models import Card, Rating
+from slate.models import Card, Rating, UserProfile
 from slate.store import MemoryStore, _from_dict, _to_dict
 
 CARD = Card(
-    card_id="2025-11-14:vrishin",
-    creator="vrishin",
+    card_id="2025-11-14:uid-vrishin",
+    uid="uid-vrishin",
+    creator_name="Vrishin",
     date="2025-11-14",
     ovr=93,
     contract=26_000_000,
@@ -43,32 +44,42 @@ def test_unknown_card_is_none_not_an_error(store):
     assert store.card("nope") is None
 
 
-def test_a_collection_is_scoped_to_its_creator(store):
+def test_a_collection_is_scoped_to_its_uid(store):
     store.save_card(CARD)
-    other = Card(card_id="2025-11-14:pabb", creator="pabb", date="2025-11-14",
-                 ovr=88, contract=10_000_000, ratings=())
+    other = Card(card_id="2025-11-14:uid-pabb", uid="uid-pabb", creator_name="Pabb",
+                 date="2025-11-14", ovr=88, contract=10_000_000, ratings=())
     store.save_card(other)
-    assert store.cards("vrishin") == [CARD]
-    assert store.cards("pabb") == [other]
+    assert store.cards("uid-vrishin") == [CARD]
+    assert store.cards("uid-pabb") == [other]
+
+
+def test_a_collection_is_scoped_by_uid_not_by_display_name(store):
+    """The bug this replaced: two people named "demo" shared a collection."""
+    store.save_card(CARD)
+    impostor = Card(card_id="2025-11-14:uid-other", uid="uid-other",
+                    creator_name="Vrishin", date="2025-11-14",
+                    ovr=70, contract=1, ratings=())
+    store.save_card(impostor)
+    assert store.cards("uid-vrishin") == [CARD]
 
 
 def test_a_collection_is_newest_first(store):
-    older = Card(card_id="2025-11-10:v", creator="v", date="2025-11-10",
+    older = Card(card_id="2025-11-10:uid-v", uid="uid-v", date="2025-11-10",
                  ovr=80, contract=1, ratings=())
-    newer = Card(card_id="2025-11-20:v", creator="v", date="2025-11-20",
+    newer = Card(card_id="2025-11-20:uid-v", uid="uid-v", date="2025-11-20",
                  ovr=90, contract=1, ratings=())
     store.save_card(older)
     store.save_card(newer)
-    assert [c.date for c in store.cards("v")] == ["2025-11-20", "2025-11-10"]
+    assert [c.date for c in store.cards("uid-v")] == ["2025-11-20", "2025-11-10"]
 
 
 def test_rebuilding_the_same_night_replaces_rather_than_duplicates(store):
-    """One build per creator per night, so the id is a natural key."""
+    """One build per user per night, so the id is a natural key."""
     store.save_card(CARD)
-    revised = Card(card_id=CARD.card_id, creator="vrishin", date="2025-11-14",
+    revised = Card(card_id=CARD.card_id, uid="uid-vrishin", date="2025-11-14",
                    ovr=99, contract=5_000_000, ratings=())
     store.save_card(revised)
-    assert store.cards("vrishin") == [revised]
+    assert store.cards("uid-vrishin") == [revised]
 
 
 def test_an_empty_collection_is_empty_not_an_error(store):
@@ -83,11 +94,37 @@ def test_firestore_satisfies_the_same_contract():
     from slate.store import FirestoreStore
 
     store = FirestoreStore()
-    probe = Card(card_id="_test:contract", creator="_test", date="2025-11-14",
-                 ovr=93, contract=26_000_000, ratings=CARD.ratings)
+    probe = Card(card_id="_test:contract", uid="_test", creator_name="Test",
+                 date="2025-11-14", ovr=93, contract=26_000_000, ratings=CARD.ratings)
     store.save_card(probe)
     assert store.card("_test:contract") == probe
     assert probe in store.cards("_test")
+
+
+# -- profiles -----------------------------------------------------------
+
+def test_a_profile_survives_a_round_trip(store):
+    stored = store.save_user(UserProfile(uid="uid-v", display_name="Vrishin",
+                                         email="v@example.com", photo_url="https://x/p.png"))
+    assert store.user("uid-v") == stored
+    assert stored.email == "v@example.com"
+
+
+def test_created_at_is_stamped_on_first_sign_in(store):
+    stored = store.save_user(UserProfile(uid="uid-v", display_name="Vrishin"))
+    assert stored.created_at
+
+
+def test_created_at_survives_every_later_sign_in(store):
+    """Everything else is whatever Google last said; this one field is ours."""
+    first = store.save_user(UserProfile(uid="uid-v", display_name="Old"))
+    second = store.save_user(UserProfile(uid="uid-v", display_name="New"))
+    assert second.created_at == first.created_at
+    assert second.display_name == "New"
+
+
+def test_an_unknown_user_is_none_not_an_error(store):
+    assert store.user("nobody") is None
 
 
 def test_base64_credentials_are_decoded(monkeypatch):

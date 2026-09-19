@@ -1,22 +1,24 @@
 """Thin HTTP layer over the card engine.
 
-Five endpoints and no database of its own. The surface stays small because no
-UI has been drawn yet -- designing endpoints for screens nobody has sketched is
-how you get an API you throw away.
+No database of its own, and a deliberately small surface -- designing
+endpoints for screens nobody has sketched is how you get an API you throw
+away. Identity is the one thing this layer owns: a Firebase ID token arrives
+as a bearer header, `current_user` verifies it, and the uid it yields is what
+keys every write.
 """
 from __future__ import annotations
 
 import os
 
-from fastapi import FastAPI, HTTPException
-from fastapi.middleware.cors import CORSMiddleware
+from fastapi import Depends, FastAPI, Header, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 
 from . import attributes
+from .auth import AuthError, AuthUser, bearer_token, verify
 from .card import build_card
 from .card import validate as validate_build
-from .models import Build, Selection
+from .models import Build, Selection, UserProfile
 from .name import APP_NAME
 from .score import NightRater
 from .sources import FixtureSource
@@ -24,20 +26,11 @@ from .store import MemoryStore, Store, default_store
 
 app = FastAPI(title=f"{APP_NAME} engine", version="0.2.0")
 
-# The frontend is a separate static app on its own origin, so it needs CORS
-# to call this API directly. No cookies/auth exist yet -- a creator is just a
-# free-text name -- so a wildcard origin adds no real exposure today.
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_methods=["GET", "POST"],
-    allow_headers=["*"],
-)
-
-# The SPA may be served from a different origin than this API, depending on how
-# the deployment is wired. Everything here is public read plus an unauthenticated
-# build, so a permissive policy costs nothing today -- tighten it the moment
-# there are accounts.
+# The SPA is a separate static app on its own origin, so it needs CORS to call
+# this API directly. A wildcard origin is still safe with accounts in play:
+# identity rides in an Authorization header, not a cookie, so a hostile page
+# cannot make the browser attach it. `allow_credentials` must stay off for
+# that to remain true.
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -76,13 +69,28 @@ def _require_durable_store() -> None:
         )
 
 
+def current_user(authorization: str | None = Header(default=None)) -> AuthUser:
+    """The signed-in caller, from `Authorization: Bearer <firebase id token>`.
+
+    A FastAPI dependency rather than middleware so each endpoint declares
+    whether it needs an identity, and so tests can substitute one through
+    `app.dependency_overrides`.
+    """
+    try:
+        return verify(bearer_token(authorization))
+    except AuthError as exc:
+        raise HTTPException(401, str(exc)) from None
+
+
 class SelectionIn(BaseModel):
     slot: str
     player_id: int
 
 
 class BuildIn(BaseModel):
-    creator: str
+    # No creator field: identity comes from the verified token, never from the
+    # request body. That is the whole point -- two people typing "demo" used to
+    # be the same user.
     selections: list[SelectionIn] = Field(
         min_length=len(attributes.SLOTS), max_length=len(attributes.SLOTS)
     )
@@ -132,7 +140,7 @@ def get_slate(date: str):
 
 
 @app.post("/slates/{date}/builds")
-def submit_build(date: str, payload: BuildIn):
+def submit_build(date: str, payload: BuildIn, user: AuthUser = Depends(current_user)):
     """Fill six slots, get a player card back.
 
     Deliberately does NOT require a durable store. Rating a night is pure
@@ -142,7 +150,8 @@ def submit_build(date: str, payload: BuildIn):
     night = _night(date)
 
     build = Build(
-        creator=payload.creator,
+        uid=user.uid,
+        display_name=user.display_name,
         selections=tuple(Selection(s.slot, s.player_id) for s in payload.selections),
     )
     problem = validate_build(build)
@@ -159,11 +168,51 @@ def submit_build(date: str, payload: BuildIn):
     return card
 
 
-@app.get("/cards/{creator}")
-def get_collection(creator: str):
-    """Every card this creator has made, newest first."""
+@app.post("/users/me")
+def upsert_profile(user: AuthUser = Depends(current_user)):
+    """Record the signed-in user. Called by the frontend when auth state
+    changes; `created_at` is stamped on the first call and never rewritten."""
     _require_durable_store()
-    return get_store().cards(creator)
+    return get_store().save_user(
+        UserProfile(
+            uid=user.uid,
+            display_name=user.display_name,
+            email=user.email,
+            photo_url=user.photo_url,
+        )
+    )
+
+
+@app.get("/users/me")
+def get_profile(user: AuthUser = Depends(current_user)):
+    """The stored profile, or the token's own claims if nothing is stored yet."""
+    _require_durable_store()
+    stored = get_store().user(user.uid)
+    return stored or UserProfile(
+        uid=user.uid,
+        display_name=user.display_name,
+        email=user.email,
+        photo_url=user.photo_url,
+    )
+
+
+# Declared before /cards/{uid} on purpose -- otherwise "me" matches as a uid.
+@app.get("/cards/me")
+def get_my_collection(user: AuthUser = Depends(current_user)):
+    """The signed-in user's collection, newest first."""
+    _require_durable_store()
+    return get_store().cards(user.uid)
+
+
+@app.get("/cards/{uid}")
+def get_collection(uid: str):
+    """Every card one user has made, newest first.
+
+    Public: a uid is an opaque identifier, not a secret, and leagues will need
+    to show other people's collections.
+    """
+    _require_durable_store()
+    return get_store().cards(uid)
 
 
 @app.get("/health")

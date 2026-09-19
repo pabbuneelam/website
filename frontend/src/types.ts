@@ -35,7 +35,7 @@ export interface Selection {
 }
 
 export interface BuildPayload {
-  creator: string
+  // No creator: the backend takes identity from the bearer token.
   selections: Selection[]
 }
 
@@ -55,9 +55,18 @@ export interface Rating {
   fantasy: number
 }
 
+export interface UserProfile {
+  uid: string
+  display_name: string
+  email: string | null
+  photo_url: string | null
+  created_at: string
+}
+
 export interface Card {
   card_id: string
-  creator: string
+  uid: string
+  creator_name: string
   date: string
   ovr: number
   contract: number

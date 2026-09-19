@@ -1,21 +1,19 @@
 import { useEffect, useState } from 'react'
-import { ApiError, getCollection } from '../api'
+import { ApiError, getMyCollection } from '../api'
 import type { Card } from '../types'
 import CardResult from './CardResult'
 
-export default function Collection({ creator }: { creator: string }) {
+/** The signed-in user's own cards. Scoped by uid on the server -- there is no
+ *  longer anything for this component to identify itself with. */
+export default function Collection() {
   const [cards, setCards] = useState<Card[] | null>(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
   const load = () => {
-    if (!creator.trim()) {
-      setError('enter a creator name first')
-      return
-    }
     setLoading(true)
     setError(null)
-    getCollection(creator)
+    getMyCollection()
       .then(setCards)
       .catch((err: unknown) => {
         const message = err instanceof ApiError ? err.message : 'failed to load collection'
@@ -25,7 +23,7 @@ export default function Collection({ creator }: { creator: string }) {
   }
 
   useEffect(() => {
-    if (creator.trim()) load()
+    load()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 

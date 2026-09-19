@@ -6,7 +6,8 @@ import pytest
 from fastapi.testclient import TestClient
 
 from slate import attributes
-from slate.api import app
+from slate.api import app, current_user
+from slate.auth import AuthUser
 from slate.store import MemoryStore
 
 client = TestClient(app)
@@ -23,11 +24,30 @@ def fresh_store(monkeypatch):
     monkeypatch.setattr(api, "store", MemoryStore())
 
 
-def payload(creator="tester", player_ids=None):
+@pytest.fixture(autouse=True)
+def signed_in():
+    """Every test runs as a verified user by default.
+
+    Substituting the dependency rather than minting real tokens keeps the
+    suite offline -- verifying a genuine ID token means fetching Google's
+    signing keys.
+    """
+    as_user("tester")
+    yield
+    app.dependency_overrides.clear()
+
+
+def as_user(uid, name=None):
+    user = AuthUser(uid=uid, display_name=name or uid, email=f"{uid}@example.com",
+                    photo_url=f"https://example.com/{uid}.png")
+    app.dependency_overrides[current_user] = lambda: user
+    return user
+
+
+def payload(player_ids=None):
     slate = client.get(f"/slates/{DATE}").json()
     ids = player_ids or [p["player_id"] for p in slate["players"]][:6]
     return {
-        "creator": creator,
         "selections": [{"slot": s, "player_id": pid}
                        for s, pid in zip(attributes.SLOTS, ids)],
     }
@@ -85,18 +105,104 @@ def test_a_short_build_is_rejected_by_the_schema():
     assert client.post(f"/slates/{DATE}/builds", json=body).status_code == 422
 
 
-def test_a_card_lands_in_the_creators_collection():
-    client.post(f"/slates/{DATE}/builds", json=payload("vrishin"))
-    collection = client.get("/cards/vrishin").json()
+def test_a_card_lands_in_the_signed_in_users_collection():
+    as_user("uid-vrishin", "Vrishin")
+    client.post(f"/slates/{DATE}/builds", json=payload())
+    collection = client.get("/cards/me").json()
     assert len(collection) == 1
-    assert collection[0]["creator"] == "vrishin"
+    assert collection[0]["uid"] == "uid-vrishin"
 
 
-def test_collections_do_not_leak_between_creators():
-    client.post(f"/slates/{DATE}/builds", json=payload("vrishin"))
-    client.post(f"/slates/{DATE}/builds", json=payload("pabb"))
-    assert len(client.get("/cards/vrishin").json()) == 1
+def test_a_card_records_a_readable_creator_name_alongside_the_uid():
+    """The uid is the key; the name is what the UI can actually show."""
+    as_user("uid-vrishin", "Vrishin")
+    card = client.post(f"/slates/{DATE}/builds", json=payload()).json()
+    assert card["uid"] == "uid-vrishin"
+    assert card["creator_name"] == "Vrishin"
+    assert card["card_id"] == f"{DATE}:uid-vrishin"
+
+
+def test_the_body_cannot_choose_whose_card_this_is():
+    """The regression this whole feature exists for: identity comes from the
+    token, so a creator field in the body is ignored, not honoured."""
+    as_user("uid-vrishin", "Vrishin")
+    body = payload() | {"creator": "someone-else", "uid": "someone-else"}
+    card = client.post(f"/slates/{DATE}/builds", json=body).json()
+    assert card["uid"] == "uid-vrishin"
+
+
+def test_collections_do_not_leak_between_users():
+    as_user("uid-vrishin")
+    client.post(f"/slates/{DATE}/builds", json=payload())
+    as_user("uid-pabb")
+    client.post(f"/slates/{DATE}/builds", json=payload())
+    assert len(client.get("/cards/me").json()) == 1
+    assert len(client.get("/cards/uid-vrishin").json()) == 1
     assert client.get("/cards/nobody").json() == []
+
+
+def test_two_users_with_the_same_display_name_are_not_the_same_creator():
+    """Two people typing "demo" used to share one card id."""
+    as_user("uid-one", "demo")
+    first = client.post(f"/slates/{DATE}/builds", json=payload()).json()
+    as_user("uid-two", "demo")
+    second = client.post(f"/slates/{DATE}/builds", json=payload()).json()
+    assert first["card_id"] != second["card_id"]
+    assert len(client.get("/cards/me").json()) == 1
+
+
+# -- who is asking ------------------------------------------------------
+
+def test_building_without_a_token_is_rejected():
+    app.dependency_overrides.clear()
+    assert client.post(f"/slates/{DATE}/builds", json=payload()).status_code == 401
+
+
+def test_a_malformed_authorization_header_is_rejected():
+    app.dependency_overrides.clear()
+    response = client.post(f"/slates/{DATE}/builds", json=payload(),
+                           headers={"Authorization": "Basic abc123"})
+    assert response.status_code == 401
+    assert "Bearer" in response.json()["detail"]
+
+
+def test_ones_own_collection_needs_a_token():
+    app.dependency_overrides.clear()
+    assert client.get("/cards/me").status_code == 401
+
+
+def test_reading_a_slate_stays_public():
+    """Nothing about tonight's games is private, and forcing a sign-in just to
+    look would be a worse product."""
+    app.dependency_overrides.clear()
+    assert client.get(f"/slates/{DATE}").status_code == 200
+    assert client.get("/attributes").status_code == 200
+
+
+# -- profiles -----------------------------------------------------------
+
+def test_first_sign_in_stores_a_profile():
+    as_user("uid-new", "New Person")
+    profile = client.post("/users/me").json()
+    assert profile["uid"] == "uid-new"
+    assert profile["display_name"] == "New Person"
+    assert profile["email"] == "uid-new@example.com"
+    assert profile["photo_url"]
+    assert profile["created_at"]
+
+
+def test_signing_in_again_refreshes_the_profile_but_keeps_created_at():
+    as_user("uid-new", "Old Name")
+    first = client.post("/users/me").json()
+    as_user("uid-new", "New Name")
+    second = client.post("/users/me").json()
+    assert second["display_name"] == "New Name"
+    assert second["created_at"] == first["created_at"]
+
+
+def test_reading_a_profile_before_it_is_stored_falls_back_to_the_token():
+    as_user("uid-fresh", "Fresh")
+    assert client.get("/users/me").json()["display_name"] == "Fresh"
 
 
 def test_health_reports_which_store_is_live():
@@ -111,7 +217,8 @@ def test_building_works_on_a_stateless_host_even_with_no_durable_store(monkeypat
     from slate import api
 
     monkeypatch.setattr(api, "ON_SERVERLESS", True)
-    response = client.post(f"/slates/{DATE}/builds", json=payload("ghost"))
+    as_user("uid-ghost")
+    response = client.post(f"/slates/{DATE}/builds", json=payload())
     assert response.status_code == 200
     assert response.json()["ovr"] > 0
 
@@ -122,7 +229,7 @@ def test_the_collection_refuses_rather_than_lying_about_what_it_saved(monkeypatc
     from slate import api
 
     monkeypatch.setattr(api, "ON_SERVERLESS", True)
-    assert client.get("/cards/ghost").status_code == 503
+    assert client.get("/cards/uid-ghost").status_code == 503
 
 
 def test_importing_the_app_never_constructs_a_store(tmp_path):

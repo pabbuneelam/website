@@ -5,15 +5,21 @@ import SlotPicker from './components/SlotPicker'
 import CardResult from './components/CardResult'
 import Collection from './components/Collection'
 import DatePicker from './components/DatePicker'
+import AccountBar from './components/AccountBar'
+import Account from './components/Account'
+import { useAuth } from './useAuth'
 
 const DEFAULT_DATE = '2025-11-14' // the only date with fixture data today
-const CREATOR_STORAGE_KEY = 'slate:creator'
 
-type Tab = 'build' | 'collection'
+// Three panels and no router. Adding one would mean a dependency, a build
+// config and real URLs for what is still a single screen with a sidebar's
+// worth of state -- when there are shareable pages (a league, another user's
+// collection) that trade flips, and this is where it flips.
+type Tab = 'build' | 'collection' | 'account'
 
 export default function App() {
+  const { user, loading: authLoading } = useAuth()
   const [tab, setTab] = useState<Tab>('build')
-  const [creator, setCreator] = useState(() => localStorage.getItem(CREATOR_STORAGE_KEY) ?? '')
   const [date, setDate] = useState(DEFAULT_DATE)
 
   const [attributes, setAttributes] = useState<AttributeDef[] | null>(null)
@@ -35,10 +41,6 @@ export default function App() {
   }, [])
 
   useEffect(() => {
-    localStorage.setItem(CREATOR_STORAGE_KEY, creator)
-  }, [creator])
-
-  useEffect(() => {
     setSlateLoading(true)
     setSlateError(null)
     setSlate(null)
@@ -51,6 +53,15 @@ export default function App() {
       })
       .finally(() => setSlateLoading(false))
   }, [date])
+
+  // Derived during render, not corrected in an effect: signing out while on a
+  // signed-in-only panel must not paint a dead screen for one frame.
+  const activeTab: Tab = user ? tab : 'build'
+
+  // A card belongs to a uid, so a new sign-in is a different collection.
+  useEffect(() => {
+    setResultCard(null)
+  }, [user?.uid])
 
   const usedByOther = (slot: string) => {
     const used = new Set<number>()
@@ -65,14 +76,13 @@ export default function App() {
     return attributes.every((a) => selections[a.slot] != null)
   }, [attributes, selections])
 
-  const canSubmit = allFilled && creator.trim().length > 0 && !submitting
+  const canSubmit = allFilled && !!user && !submitting
 
   const handleSubmit = () => {
     if (!attributes || !canSubmit) return
     setSubmitting(true)
     setSubmitError(null)
     submitBuild(date, {
-      creator: creator.trim(),
       selections: attributes.map((a) => ({ slot: a.slot, player_id: selections[a.slot]! })),
     })
       .then(setResultCard)
@@ -85,36 +95,43 @@ export default function App() {
   return (
     <div className="app">
       <header className="app__header">
+        <AccountBar user={user} loading={authLoading} onOpenAccount={() => setTab('account')} />
         <h1>Slate</h1>
         <p className="app__tagline">Build a player out of tonight's real performances.</p>
       </header>
 
       <nav className="tabs">
-        <button className={tab === 'build' ? 'tabs__item tabs__item--active' : 'tabs__item'} onClick={() => setTab('build')}>
+        <button className={activeTab === 'build' ? 'tabs__item tabs__item--active' : 'tabs__item'} onClick={() => setTab('build')}>
           Build
         </button>
-        <button
-          className={tab === 'collection' ? 'tabs__item tabs__item--active' : 'tabs__item'}
-          onClick={() => setTab('collection')}
-        >
-          My Collection
-        </button>
+        {user && (
+          <button
+            className={activeTab === 'collection' ? 'tabs__item tabs__item--active' : 'tabs__item'}
+            onClick={() => setTab('collection')}
+          >
+            My Collection
+          </button>
+        )}
+        {user && (
+          <button
+            className={activeTab === 'account' ? 'tabs__item tabs__item--active' : 'tabs__item'}
+            onClick={() => setTab('account')}
+          >
+            Account
+          </button>
+        )}
       </nav>
 
-      <div className="toolbar">
-        <label>
-          Creator name
-          <input value={creator} onChange={(e) => setCreator(e.target.value)} placeholder="your name" />
-        </label>
-        {tab === 'build' && (
+      {activeTab === 'build' && (
+        <div className="toolbar">
           <label>
             Slate date
             <DatePicker value={date} onChange={setDate} />
           </label>
-        )}
-      </div>
+        </div>
+      )}
 
-      {tab === 'build' && (
+      {activeTab === 'build' && (
         <main>
           {slateLoading && <p>Loading slate…</p>}
           {slateError && <p className="error-banner">{slateError}</p>}
@@ -138,7 +155,8 @@ export default function App() {
                 <button onClick={handleSubmit} disabled={!canSubmit}>
                   {submitting ? 'Building…' : 'Build card'}
                 </button>
-                {!creator.trim() && <span className="hint">enter a creator name</span>}
+                {/* Picking is free; only keeping the card needs an account. */}
+                {!user && !authLoading && <span className="hint">log in to build a card</span>}
               </div>
               {submitError && <p className="error-banner">{submitError}</p>}
 
@@ -148,9 +166,15 @@ export default function App() {
         </main>
       )}
 
-      {tab === 'collection' && (
+      {activeTab === 'collection' && user && (
         <main>
-          <Collection creator={creator} />
+          <Collection />
+        </main>
+      )}
+
+      {activeTab === 'account' && user && (
+        <main>
+          <Account user={user} />
         </main>
       )}
     </div>

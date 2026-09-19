@@ -20,7 +20,7 @@ See [SLATE.md](SLATE.md) for the full design. This repo holds the daily loop
 ```sh
 python -m venv .venv && .venv/bin/pip install -e ".[dev]"
 
-.venv/bin/python -m pytest                     # 79 tests
+.venv/bin/python -m pytest                     # 114 tests
 .venv/bin/python -m slate build 2025-11-14     # build a card from the fixture
 .venv/bin/uvicorn slate.api:app --reload       # http://127.0.0.1:8000/docs
 ```
@@ -33,10 +33,12 @@ npm install
 npm run dev                                    # http://localhost:5173
 ```
 
-The dev server proxies `/attributes`, `/slates`, `/cards`, `/health` straight
-to `127.0.0.1:8000` (see `frontend/vite.config.ts`) — no env vars needed
-locally. For a production build against a deployed backend, set
+The dev server proxies `/attributes`, `/slates`, `/cards`, `/users`, `/health`
+straight to `127.0.0.1:8000` (see `frontend/vite.config.ts`) — no env vars
+needed locally. For a production build against a deployed backend, set
 `VITE_API_BASE` (see `frontend/.env.example`).
+
+Building a card requires signing in — see **Accounts**, below.
 
 ```
   Slate — created 2025-11-14
@@ -88,7 +90,8 @@ Two consequences worth knowing:
 | `slate/card.py` | Six selections → OVR, contract, card. |
 | `slate/store.py` | `MemoryStore` (default) and `FirestoreStore`. |
 | `slate/sources/` | `FixtureSource` today, `BallDontLieSource` stubbed. |
-| `slate/api.py` | Five endpoints. |
+| `slate/auth.py` | Firebase ID token in, verified uid out. |
+| `slate/api.py` | The HTTP surface. Public reads, authenticated writes. |
 | `tools/make_fixture.py` | Regenerates the committed fixture. Seeded. |
 
 ## Data tiers
@@ -144,11 +147,37 @@ export GOOGLE_APPLICATION_CREDENTIALS=~/.secrets/questly-sa.json
 ```
 
 ```
-cards/{card_id}     one created player, id "{date}:{creator}"
+cards/{card_id}     one created player, id "{date}:{uid}"
+users/{uid}         one signed-in person
 ```
 
 A card carries a stable id and its creator from the moment it exists, because
 it outlives the roster it was made for — waived, claimed, signed, retired.
+
+## Accounts
+
+Sign-in is Google, through Firebase Auth on the same `questly-7f3a2` project.
+The browser gets an ID token, sends it as `Authorization: Bearer <token>`, and
+`slate/auth.py` verifies it server-side. **The uid is the only identity
+anything is keyed on** — `creator` used to be a free-text box, so two people
+typing `demo` were one user with one colliding `card_id`. A display name still
+rides along on each card, but purely so the UI can say who made it.
+
+| | |
+|---|---|
+| public | `/attributes`, `/slates/{date}`, `/cards/{uid}`, `/health` |
+| needs a token | `POST /slates/{date}/builds`, `/cards/me`, `/users/me` |
+
+The web config in `frontend/src/firebase.ts` is public by design — a Firebase
+web config identifies a project, it does not authorise anything. Verification
+uses the service-account credentials the store already loads, so no new
+secret is introduced.
+
+**Manual step, once per project:** Firebase console → `questly-7f3a2` →
+Build → Authentication → Sign-in method → Add new provider → **Google** →
+enable, set a support email, Save. Then Authentication → Settings →
+Authorized domains, and add any deploy domain (`localhost` is there by
+default).
 
 ## Next
 

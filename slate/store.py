@@ -12,11 +12,11 @@ import base64
 import binascii
 import json
 import os
-from collections import defaultdict
-from dataclasses import asdict
+from dataclasses import asdict, replace
+from datetime import datetime, timezone
 from typing import Protocol
 
-from .models import Card, Rating
+from .models import Card, Rating, UserProfile
 
 
 def _to_dict(card: Card) -> dict:
@@ -31,13 +31,28 @@ def _from_dict(raw: dict) -> Card:
     return Card(**data)
 
 
+def _now() -> str:
+    return datetime.now(timezone.utc).isoformat(timespec="seconds")
+
+
 class Store(Protocol):
     def save_card(self, card: Card) -> None: ...
 
     def card(self, card_id: str) -> Card | None: ...
 
-    def cards(self, creator: str) -> list[Card]:
-        """One creator's collection, newest first."""
+    def cards(self, uid: str) -> list[Card]:
+        """One user's collection, newest first."""
+        ...
+
+    def user(self, uid: str) -> UserProfile | None: ...
+
+    def save_user(self, profile: UserProfile) -> UserProfile:
+        """Upsert a profile on sign-in and return what is now stored.
+
+        ``created_at`` is written once, on the first sign-in, and never
+        rewritten -- it is the only field here that is not simply whatever
+        the identity provider last said.
+        """
         ...
 
 
@@ -46,6 +61,7 @@ class MemoryStore:
 
     def __init__(self) -> None:
         self._cards: dict[str, Card] = {}
+        self._users: dict[str, UserProfile] = {}
 
     def save_card(self, card: Card) -> None:
         self._cards[card.card_id] = card
@@ -53,15 +69,25 @@ class MemoryStore:
     def card(self, card_id: str) -> Card | None:
         return self._cards.get(card_id)
 
-    def cards(self, creator: str) -> list[Card]:
-        found = [c for c in self._cards.values() if c.creator == creator]
+    def cards(self, uid: str) -> list[Card]:
+        found = [c for c in self._cards.values() if c.uid == uid]
         return sorted(found, key=lambda c: c.date, reverse=True)
+
+    def user(self, uid: str) -> UserProfile | None:
+        return self._users.get(uid)
+
+    def save_user(self, profile: UserProfile) -> UserProfile:
+        existing = self._users.get(profile.uid)
+        stored = replace(profile, created_at=existing.created_at if existing else _now())
+        self._users[profile.uid] = stored
+        return stored
 
 
 class FirestoreStore:
     """Firebase project questly-7f3a2.
 
-        cards/{card_id}    one created player
+        cards/{card_id}    one created player, id "{date}:{uid}"
+        users/{uid}        one signed-in person
 
     Auth is a service account, so security rules are bypassed -- this is server
     side. Rules only start mattering when a browser reads these directly.
@@ -97,10 +123,23 @@ class FirestoreStore:
         doc = self._db.collection("cards").document(card_id).get()
         return _from_dict(doc.to_dict()) if doc.exists else None
 
-    def cards(self, creator: str) -> list[Card]:
-        docs = self._db.collection("cards").where("creator", "==", creator).stream()
+    def cards(self, uid: str) -> list[Card]:
+        docs = self._db.collection("cards").where("uid", "==", uid).stream()
         found = [_from_dict(d.to_dict()) for d in docs]
         return sorted(found, key=lambda c: c.date, reverse=True)
+
+    def user(self, uid: str) -> UserProfile | None:
+        doc = self._db.collection("users").document(uid).get()
+        return UserProfile(**doc.to_dict()) if doc.exists else None
+
+    def save_user(self, profile: UserProfile) -> UserProfile:
+        # Read first so created_at survives every later sign-in. One extra
+        # read per sign-in, not per request -- the frontend calls this once
+        # when the auth state changes.
+        existing = self.user(profile.uid)
+        stored = replace(profile, created_at=existing.created_at if existing else _now())
+        self._db.collection("users").document(profile.uid).set(asdict(stored))
+        return stored
 
 
 def _credentials_json() -> str | None:

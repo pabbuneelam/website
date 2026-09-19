@@ -23,7 +23,12 @@ export default function CardResult({ card }: { card: Card }) {
         <div className="card-result__meta">
           <div>{formatSalary(card.contract)}/yr</div>
           <div>{formatValuePerMillion(card.ovr, card.contract)} OVR per $M</div>
-          <div className="card-result__date">created {card.date}</div>
+          {/* The card is keyed on a uid; this is the only part of it a reader
+              can actually recognise. */}
+          <div className="card-result__date">
+            created {card.date}
+            {card.creator_name ? ` by ${card.creator_name}` : ''}
+          </div>
         </div>
       </div>
 

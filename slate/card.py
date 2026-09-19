@@ -12,10 +12,12 @@ from .models import Build, Card, Rating, Selection
 from .score import NightRater
 
 
-def card_id(creator: str, date: str) -> str:
-    """One build per creator per night, so this is a natural key. Deterministic
-    rather than random, which keeps replays and tests reproducible."""
-    return f"{date}:{creator}"
+def card_id(uid: str, date: str) -> str:
+    """One build per user per night, so this is a natural key. Keyed on the
+    verified Firebase uid rather than a typed-in name -- two people calling
+    themselves "demo" used to be the same creator. Deterministic rather than
+    random, which keeps replays and tests reproducible."""
+    return f"{date}:{uid}"
 
 
 def validate(build: Build) -> str:
@@ -50,7 +52,8 @@ def build_card(build: Build, rater: NightRater, date: str) -> Card:
     problem = validate(build)
     if problem:
         return Card(
-            card_id=card_id(build.creator, date), creator=build.creator,
+            card_id=card_id(build.uid, date), uid=build.uid,
+            creator_name=build.display_name,
             date=date, ovr=0, contract=0, ratings=(),
             void=True, void_reason=problem,
         )
@@ -90,6 +93,7 @@ def build_card(build: Build, rater: NightRater, date: str) -> Card:
     contract = round(sum(salaries) / len(salaries)) if salaries else 0
 
     return Card(
-        card_id=card_id(build.creator, date), creator=build.creator,
+        card_id=card_id(build.uid, date), uid=build.uid,
+        creator_name=build.display_name,
         date=date, ovr=ovr, contract=contract, ratings=tuple(ratings),
     )
