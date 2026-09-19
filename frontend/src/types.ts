@@ -99,3 +99,39 @@ export interface LeagueView {
   league: League | null
   members: Membership[]
 }
+
+/** A trade is card-for-card and nothing else. No currency: it would turn good
+ *  predictors into farmers running a secondary market. Build picks and cap
+ *  space are deferred until an entitlement model and a payroll cap exist. */
+export type TradeStatus = 'pending' | 'accepted' | 'rejected' | 'cancelled'
+
+export interface Trade {
+  trade_id: string
+  league_id: string
+  proposer_uid: string
+  recipient_uid: string
+  offered_card_id: string
+  requested_card_id: string
+  status: TradeStatus
+  proposer_name: string
+  recipient_name: string
+  created_at: string
+  resolved_at: string
+  resolution_note: string
+}
+
+/** A trade with both cards read live, so an offer can be judged on OVR and
+ *  contract rather than on two opaque ids. Either can be null if a card was
+ *  removed out from under the trade. */
+export interface TradeView {
+  trade: Trade
+  offered_card: Card | null
+  requested_card: Card | null
+}
+
+/** Split by side because the actions differ: you accept or reject what came
+ *  in, you cancel what went out. */
+export interface TradeInbox {
+  incoming: TradeView[]
+  outgoing: TradeView[]
+}

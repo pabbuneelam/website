@@ -134,10 +134,14 @@ class Card:
     A card outlives the roster it was made for -- it can be waived, claimed,
     signed and retired by other teams -- so it carries a stable id and records
     who created it from the moment it exists.
+
+    ``uid`` is the *current owner* and moves when the card is traded;
+    ``creator_name`` and the uid baked into ``card_id`` are the creator and
+    never move. That is why a card's id is stable across a trade.
     """
 
     card_id: str
-    uid: str                   # verified Firebase identity of the creator
+    uid: str                   # verified Firebase identity of the current owner
     date: str
     ovr: int
     contract: int              # average annual salary of the players used
@@ -206,3 +210,46 @@ class Membership:
     # without a read per member. A snapshot; the profile is current truth.
     display_name: str = ""
     joined_at: str = ""        # ISO 8601 UTC
+
+
+# Status values a trade can hold. `pending` is the only actionable one; the
+# other three are terminal, which is what stops a trade being accepted twice.
+TRADE_PENDING = "pending"
+TRADE_ACCEPTED = "accepted"
+TRADE_REJECTED = "rejected"
+TRADE_CANCELLED = "cancelled"
+TRADE_TERMINAL = (TRADE_ACCEPTED, TRADE_REJECTED, TRADE_CANCELLED)
+
+
+@dataclass(frozen=True)
+class Trade:
+    """One card offered for one card, between two members of one league.
+
+    Card-for-card and nothing else: no currency, because a currency turns
+    good predictors into farmers running a secondary market. Build picks and
+    cap space are the other two tradeable assets in the design and are
+    deliberately absent -- neither has an entitlement model yet, and there is
+    no payroll cap for "both sides must end cap-legal" to validate against.
+
+    ``league_id`` is stamped at propose time so a trade records the league it
+    was made in even after someone leaves it. Both display names are
+    denormalised like ``Card.creator_name`` -- an inbox has to name the other
+    side without a read per row.
+    """
+
+    trade_id: str
+    league_id: str
+    proposer_uid: str
+    recipient_uid: str
+    offered_card_id: str        # the proposer's card, going out
+    requested_card_id: str      # the recipient's card, coming back
+    status: str = TRADE_PENDING
+    proposer_name: str = ""
+    recipient_name: str = ""
+    created_at: str = ""        # ISO 8601 UTC
+    resolved_at: str = ""       # ISO 8601 UTC; empty while pending
+    resolution_note: str = ""   # why, when it was not a plain accept/reject
+
+    @property
+    def pending(self) -> bool:
+        return self.status == TRADE_PENDING

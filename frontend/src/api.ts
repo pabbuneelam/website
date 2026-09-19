@@ -1,4 +1,13 @@
-import type { AttributeDef, BuildPayload, Card, LeagueView, Slate, UserProfile } from './types'
+import type {
+  AttributeDef,
+  BuildPayload,
+  Card,
+  LeagueView,
+  Slate,
+  TradeInbox,
+  TradeView,
+  UserProfile,
+} from './types'
 
 // Empty by default: dev proxies (see vite.config.ts) forward the API's own
 // root-level paths straight to uvicorn. Set VITE_API_BASE to call a deployed
@@ -98,4 +107,43 @@ export function joinLeague(code: string): Promise<LeagueView> {
 
 export function leaveLeague(): Promise<LeagueView> {
   return request('/leagues/leave', { method: 'POST' })
+}
+
+/** Both trade inboxes for the signed-in user, newest first. */
+export function getTrades(): Promise<TradeInbox> {
+  return request('/trades')
+}
+
+/** Offer one of your cards for one of theirs. 409 if you are not leaguemates,
+ *  or if either card has already changed hands. */
+export function proposeTrade(
+  recipientUid: string,
+  offeredCardId: string,
+  requestedCardId: string,
+): Promise<TradeView> {
+  return request('/trades', {
+    method: 'POST',
+    body: JSON.stringify({
+      recipient_uid: recipientUid,
+      offered_card_id: offeredCardId,
+      requested_card_id: requestedCardId,
+    }),
+  })
+}
+
+/** Take the deal. Both cards move or neither does -- the server re-checks
+ *  ownership inside the same transaction that writes the swap, so a 409 here
+ *  means nothing moved. */
+export function acceptTrade(tradeId: string): Promise<TradeView> {
+  return request(`/trades/${encodeURIComponent(tradeId)}/accept`, { method: 'POST' })
+}
+
+/** Turn down an incoming offer. Only the recipient can. */
+export function rejectTrade(tradeId: string): Promise<TradeView> {
+  return request(`/trades/${encodeURIComponent(tradeId)}/reject`, { method: 'POST' })
+}
+
+/** Withdraw an outgoing offer. Only the proposer can. */
+export function cancelTrade(tradeId: string): Promise<TradeView> {
+  return request(`/trades/${encodeURIComponent(tradeId)}/cancel`, { method: 'POST' })
 }

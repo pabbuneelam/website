@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import type { User } from 'firebase/auth'
 import { ApiError, createLeague, getMyLeague, joinLeague, leaveLeague } from '../api'
 import type { LeagueView } from '../types'
+import Trades from './Trades'
 
 /** The league panel: one league at a time, joined by invite code.
  *
@@ -162,12 +163,19 @@ export default function League({ user }: { user: User }) {
         </tbody>
       </table>
 
+      {/* Trading is between leaguemates and nowhere else, so it lives on the
+          league screen rather than behind a tab of its own. */}
+      <Trades uid={user.uid} members={members} />
+
       <div className="league__actions">
         <button className="league__leave" onClick={() => run(leaveLeague, 'failed to leave')} disabled={busy}>
           {busy ? 'Leaving…' : 'Leave league'}
         </button>
         {/* Cards are owned by the uid, so nothing about the collection moves. */}
-        <span className="hint">Your cards stay yours — a collection is not league property.</span>
+        <span className="hint">
+          Your cards stay yours — a collection is not league property. Leaving
+          cancels any trade you still have pending.
+        </span>
       </div>
     </div>
   )
