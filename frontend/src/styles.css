@@ -45,9 +45,13 @@ button,input{font-family:inherit;font-size:inherit;color:inherit}
 button{cursor:pointer}
 :focus-visible{outline:3px solid var(--red);outline-offset:2px}
 
+/* No `filter` here on purpose. Any filter value other than `none` creates a
+   stacking context, and with fill-mode:both it persists after the animation --
+   which traps an open dropdown's z-index inside its own slot and lets the
+   slots below paint straight through the menu. */
 @keyframes press{
-  from{opacity:0;transform:translateY(10px) scale(.99);filter:blur(3px)}
-  to{opacity:1;transform:none;filter:blur(0)}
+  from{opacity:0;transform:translateY(10px) scale(.99)}
+  to{opacity:1;transform:none}
 }
 @keyframes ruleIn{from{transform:scaleX(0)}to{transform:scaleX(1)}}
 
@@ -104,6 +108,7 @@ button{cursor:pointer}
 
 /* ---------------- toolbar ---------------- */
 .toolbar{
+  position:relative;z-index:70;
   display:flex;gap:30px;flex-wrap:wrap;align-items:flex-end;
   padding:0 0 22px;border-bottom:var(--hair);margin-bottom:30px;
 }
@@ -158,6 +163,10 @@ button{cursor:pointer}
 }
 
 /* ---------------- dropdown ---------------- */
+/* The slot holding an open menu must outrank the slots painted after it. */
+.slot-picker:has(.dropdown__menu--open){z-index:60}
+.slot-picker:has(.date-picker__panel--open){z-index:60}
+
 .dropdown{position:relative}
 .dropdown__trigger{
   width:100%;display:flex;align-items:center;justify-content:space-between;gap:10px;
@@ -178,10 +187,10 @@ button{cursor:pointer}
   position:absolute;top:calc(100% + 5px);left:0;right:0;z-index:40;
   list-style:none;background:var(--paper);border:var(--rule);
   box-shadow:var(--press);
-  max-height:0;overflow:hidden;opacity:0;pointer-events:none;
-  transition:max-height .22s ease,opacity .14s ease;
+  max-height:0;overflow:hidden;opacity:0;pointer-events:none;visibility:hidden;
+  transition:max-height .22s ease,opacity .14s ease,visibility .22s;
 }
-.dropdown__menu--open{max-height:296px;overflow-y:auto;opacity:1;pointer-events:auto}
+.dropdown__menu--open{max-height:296px;overflow-y:auto;opacity:1;pointer-events:auto;visibility:visible}
 .dropdown__option{
   padding:9px 13px;font-size:14.5px;border-bottom:var(--hair);
   transition:background .1s ease,color .1s ease;
