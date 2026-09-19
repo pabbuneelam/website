@@ -10,6 +10,7 @@ import os
 
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 
 from . import attributes
@@ -26,6 +27,17 @@ app = FastAPI(title=f"{APP_NAME} engine", version="0.2.0")
 # The frontend is a separate static app on its own origin, so it needs CORS
 # to call this API directly. No cookies/auth exist yet -- a creator is just a
 # free-text name -- so a wildcard origin adds no real exposure today.
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_methods=["GET", "POST"],
+    allow_headers=["*"],
+)
+
+# The SPA may be served from a different origin than this API, depending on how
+# the deployment is wired. Everything here is public read plus an unauthenticated
+# build, so a permissive policy costs nothing today -- tighten it the moment
+# there are accounts.
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
