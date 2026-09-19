@@ -12,11 +12,20 @@ import base64
 import binascii
 import json
 import os
+import threading
 from dataclasses import asdict, replace
 from datetime import datetime, timezone
 from typing import Protocol
 
-from .models import Card, League, Membership, Rating, UserProfile
+from .models import (
+    TRADE_ACCEPTED,
+    Card,
+    League,
+    Membership,
+    Rating,
+    Trade,
+    UserProfile,
+)
 
 
 def _to_dict(card: Card) -> dict:
@@ -38,6 +47,58 @@ def _normalise_code(code: str) -> str:
 
 def _now() -> str:
     return datetime.now(timezone.utc).isoformat(timespec="seconds")
+
+
+def _stamp() -> str:
+    """Microseconds, because two trades resolved in the same second is the
+    normal case and this is what orders an inbox."""
+    return datetime.now(timezone.utc).isoformat(timespec="microseconds")
+
+
+class TradeConflict(Exception):
+    """The world moved between proposing a trade and accepting it.
+
+    Carries the sentence shown to the user, because every one of these is
+    something they can act on: the trade is gone, already resolved, or a
+    card in it has changed hands.
+    """
+
+
+def _acceptance(
+    trade: Trade | None,
+    recipient_uid: str,
+    offered: Card | None,
+    requested: Card | None,
+) -> tuple[Card, Card, Trade]:
+    """The three documents an accepted trade writes, or a TradeConflict.
+
+    Pure, and shared by both stores, so the memory and Firestore paths
+    cannot drift on what an accept is allowed to do. Ownership is checked
+    HERE -- at accept time, inside whatever transaction the caller opened
+    -- and not only at propose time, because that is the check that stops
+    one card being traded away twice.
+    """
+    if trade is None:
+        raise TradeConflict("that trade no longer exists")
+    if trade.recipient_uid != recipient_uid:
+        raise TradeConflict("only the recipient can accept this trade")
+    if not trade.pending:
+        raise TradeConflict(f"this trade was already {trade.status}")
+    if offered is None or requested is None:
+        raise TradeConflict("a card in this trade no longer exists")
+    if offered.uid != trade.proposer_uid:
+        raise TradeConflict(
+            "the offered card has changed hands since this trade was proposed"
+        )
+    if requested.uid != trade.recipient_uid:
+        raise TradeConflict(
+            "the requested card has changed hands since this trade was proposed"
+        )
+    return (
+        replace(offered, uid=trade.recipient_uid),
+        replace(requested, uid=trade.proposer_uid),
+        replace(trade, status=TRADE_ACCEPTED, resolved_at=_stamp()),
+    )
 
 
 class Store(Protocol):
@@ -88,6 +149,28 @@ class Store(Protocol):
         """Everyone in one league, oldest member first."""
         ...
 
+    # --- trades -------------------------------------------------------
+    # Card for card, between two members of one league. The interesting
+    # method is the last one: accepting has to move both cards or neither.
+
+    def save_trade(self, trade: Trade) -> None: ...
+
+    def trade(self, trade_id: str) -> Trade | None: ...
+
+    def trades(self, uid: str) -> list[Trade]:
+        """Every trade this user is party to, either side, newest first."""
+        ...
+
+    def accept_trade(self, trade_id: str, recipient_uid: str) -> Trade:
+        """Swap both cards and close the trade, atomically.
+
+        Raises ``TradeConflict`` -- writing nothing -- if the trade is gone,
+        already resolved, not this caller's to accept, or if either card has
+        changed hands since it was proposed. A half-applied swap would give a
+        card away without handing one back, so this is all or nothing.
+        """
+        ...
+
 
 class MemoryStore:
     """Default. No credentials, no network, forgets everything on restart."""
@@ -97,6 +180,10 @@ class MemoryStore:
         self._users: dict[str, UserProfile] = {}
         self._leagues: dict[str, League] = {}
         self._memberships: dict[str, Membership] = {}
+        self._trades: dict[str, Trade] = {}
+        # Only accept_trade takes this. It is the one operation here
+        # that writes three documents which must move together.
+        self._lock = threading.Lock()
 
     def save_card(self, card: Card) -> None:
         self._cards[card.card_id] = card
@@ -140,6 +227,39 @@ class MemoryStore:
         found = [m for m in self._memberships.values() if m.league_id == league_id]
         return sorted(found, key=lambda m: (m.joined_at, m.uid))
 
+    def save_trade(self, trade: Trade) -> None:
+        self._trades[trade.trade_id] = trade
+
+    def trade(self, trade_id: str) -> Trade | None:
+        return self._trades.get(trade_id)
+
+    def trades(self, uid: str) -> list[Trade]:
+        found = [
+            t
+            for t in self._trades.values()
+            if uid in (t.proposer_uid, t.recipient_uid)
+        ]
+        return sorted(found, key=lambda t: t.created_at, reverse=True)
+
+    def accept_trade(self, trade_id: str, recipient_uid: str) -> Trade:
+        # Firestore gets a transaction; here the equivalent is a lock plus
+        # the ordering below -- every check and every replacement object is
+        # computed first, and the three dict writes that follow cannot fail
+        # or be interleaved. Nothing is mutated on the raising path.
+        with self._lock:
+            trade = self._trades.get(trade_id)
+            offered = requested = None
+            if trade is not None:
+                offered = self._cards.get(trade.offered_card_id)
+                requested = self._cards.get(trade.requested_card_id)
+            new_offered, new_requested, done = _acceptance(
+                trade, recipient_uid, offered, requested
+            )
+            self._cards[new_offered.card_id] = new_offered
+            self._cards[new_requested.card_id] = new_requested
+            self._trades[done.trade_id] = done
+            return done
+
 
 class FirestoreStore:
     """Firebase project questly-7f3a2.
@@ -149,6 +269,7 @@ class FirestoreStore:
         leagues/{league_id}    one league, carrying its invite code
         memberships/{uid}      which league that user is in -- at most one,
                                which is why the uid is the document id
+        trades/{trade_id}      one card offered for one card
 
     Auth is a service account, so security rules are bypassed -- this is server
     side. Rules only start mattering when a browser reads these directly.
@@ -242,6 +363,65 @@ class FirestoreStore:
         )
         found = [Membership(**d.to_dict()) for d in docs]
         return sorted(found, key=lambda m: (m.joined_at, m.uid))
+
+    def save_trade(self, trade: Trade) -> None:
+        self._db.collection("trades").document(trade.trade_id).set(asdict(trade))
+
+    def trade(self, trade_id: str) -> Trade | None:
+        doc = self._db.collection("trades").document(trade_id).get()
+        return Trade(**doc.to_dict()) if doc.exists else None
+
+    def trades(self, uid: str) -> list[Trade]:
+        # Two single-field equality queries rather than one OR, so this needs
+        # no composite index -- same reason cards() and league_by_code() are
+        # shaped the way they are. A user is on at most one side of a trade,
+        # so the two result sets cannot overlap.
+        collection = self._db.collection("trades")
+        found = [
+            Trade(**d.to_dict())
+            for field in ("proposer_uid", "recipient_uid")
+            for d in collection.where(field, "==", uid).stream()
+        ]
+        return sorted(found, key=lambda t: t.created_at, reverse=True)
+
+    def accept_trade(self, trade_id: str, recipient_uid: str) -> Trade:
+        """Three documents, one transaction: both cards and the trade itself.
+
+        Firestore transactions require every read before every write, which
+        is exactly the shape this needs anyway -- read the trade and both
+        cards, decide, then write all three or none of them. The transaction
+        retries if any of the three changed underneath it, so two recipients
+        racing to accept trades for the same card cannot both win.
+        """
+        from google.cloud import firestore
+
+        trade_ref = self._db.collection("trades").document(trade_id)
+        cards = self._db.collection("cards")
+
+        @firestore.transactional
+        def swap(transaction) -> Trade:
+            snapshot = trade_ref.get(transaction=transaction)
+            trade = Trade(**snapshot.to_dict()) if snapshot.exists else None
+            if trade is None:
+                raise TradeConflict("that trade no longer exists")
+
+            offered_ref = cards.document(trade.offered_card_id)
+            requested_ref = cards.document(trade.requested_card_id)
+            offered_doc = offered_ref.get(transaction=transaction)
+            requested_doc = requested_ref.get(transaction=transaction)
+
+            new_offered, new_requested, done = _acceptance(
+                trade,
+                recipient_uid,
+                _from_dict(offered_doc.to_dict()) if offered_doc.exists else None,
+                _from_dict(requested_doc.to_dict()) if requested_doc.exists else None,
+            )
+            transaction.set(offered_ref, _to_dict(new_offered))
+            transaction.set(requested_ref, _to_dict(new_requested))
+            transaction.set(trade_ref, asdict(done))
+            return done
+
+        return swap(self._db.transaction())
 
 
 def _credentials_json() -> str | None:

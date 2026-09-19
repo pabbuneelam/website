@@ -27,7 +27,8 @@ Two things make it more than a novelty:
 | | |
 |---|---|
 | ✅ **Built** | Attribute engine, ratings, OVR, contract, card, API, persistence |
-| ⬜ Next | Collection → roster + cap → waivers/FA → trades → simulation |
+| ✅ **Built** | Card-for-card trades between leaguemates |
+| ⬜ Next | Collection → roster + cap → waivers/FA → picks and cap space as trade legs → simulation |
 
 No prediction model is needed anywhere in this design. See *Ratings*, below.
 
@@ -144,7 +145,9 @@ Original creator, date, the NBA players used, original contract, every team play
 
 ### Tradeable assets
 
-1. **Created players**, with their contracts.
+1. **Created players**, with their contracts. *Shipped* — card for card,
+   between two members of one league, with ownership re-checked inside the
+   transaction that writes the swap. See the Trades section of the README.
 2. **Future build picks** — the right to create a player on a given future NBA game day. Nights with more games are worth more, so this is a draft-pick economy without a draft.
 3. **Cap space** — temporary (+$10M for 15 days) or permanent (+$2M). Permanent must stay rare or the economy inflates.
 
@@ -177,6 +180,9 @@ Nothing is paid for yet. Everything runs on a committed fixture with deliberatel
 
 - Is OVR a flat mean, or weighted by position once rosters exist?
 - Do build picks need an expiry, or can a hoarder bank a season of them?
-- Trades: player-for-player only, or is there a currency? A currency turns good predictors into farmers running a secondary market.
+- ~~Trades: player-for-player only, or is there a currency?~~ **Decided: no
+  currency.** A currency would let strong predictors farm cards and sell
+  them, turning the game into a market rather than a prediction contest.
+  Revisit deliberately or not at all.
 - League-average constants (`LEAGUE_3P`, `LEAGUE_RIM`, …) are guesses until a real season is loaded.
 - Does one build per night per user hold, or do build picks make that variable?

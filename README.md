@@ -175,10 +175,14 @@ cards/{card_id}       one created player, id "{date}:{uid}"
 users/{uid}           one signed-in person
 leagues/{league_id}   one league, carrying its invite code
 memberships/{uid}     which league that user is in
+trades/{trade_id}     one card offered for one card
 ```
 
 A card carries a stable id and its creator from the moment it exists, because
-it outlives the roster it was made for — waived, claimed, signed, retired.
+it outlives the roster it was made for — waived, claimed, signed, traded,
+retired. `uid` on a card is therefore its **current owner** and moves when it
+is traded; the uid inside `card_id` and `creator_name` are the creator and
+never move.
 
 ## Accounts
 
@@ -192,7 +196,7 @@ rides along on each card, but purely so the UI can say who made it.
 | | |
 |---|---|
 | public | `/attributes`, `/slates/{date}`, `/cards/{uid}`, `/health` |
-| needs a token | `POST /slates/{date}/builds`, `/cards/me`, `/users/me`, every `/leagues` route |
+| needs a token | `POST /slates/{date}/builds`, `/cards/me`, `/users/me`, every `/leagues` and `/trades` route |
 
 ## Leagues
 
@@ -310,7 +314,62 @@ firebase deploy --only firestore:rules --project questly-7f3a2
 Until those rules are live every listener fails with `permission-denied` — that
 is the expected symptom, not a bug in the UI.
 
+## Trades
+
+**Card for card, between two members of the same league.** Propose, accept,
+reject, cancel. No currency — a currency would let strong predictors farm cards
+and sell them, which turns the game into a market rather than a prediction
+contest. Build picks and cap space, the other two tradeable assets in
+SLATE.md, are deliberately absent: a build is implicitly always allowed so
+there is no entitlement to trade away, and with no roster and no payroll cap
+there is nothing for "both sides must end cap-legal" to validate against. Both
+drop in later as extra legs and one validation step.
+
+| | |
+|---|---|
+| `POST /trades` | `{recipient_uid, offered_card_id, requested_card_id}` → the trade and both cards |
+| `GET /trades` | `{incoming, outgoing}`, newest first, each with both cards attached |
+| `POST /trades/{id}/accept` | recipient only; swaps both cards atomically |
+| `POST /trades/{id}/reject` | recipient only |
+| `POST /trades/{id}/cancel` | proposer only |
+
+Four rules carry the whole feature:
+
+- **Same league.** Both sides must hold a membership in the same league, so
+  proposing to an outsider is a 409 that says so.
+- **Ownership is checked twice.** At propose time for a legible error, and
+  again *at accept time inside the transaction that writes the swap*. The
+  second check is the one that matters: it is what stops one card being traded
+  away twice by offering it to two people and having both accept.
+- **The swap is all-or-nothing.** `FirestoreStore.accept_trade` reads the
+  trade and both cards, decides, then writes all three documents in one
+  `@firestore.transactional` — which retries if any of them moved underneath
+  it. `MemoryStore` does the same under a lock, with every check and every
+  replacement object computed before the first mutation, so the raising path
+  writes nothing. A half-applied swap gives a card away without handing one
+  back, and is the worst bug this feature could have.
+- **Only the two parties act, and only once.** The recipient accepts or
+  rejects, the proposer cancels, anyone else gets a 404 — a trade id is not
+  something a bystander should be able to probe for. `accepted`, `rejected`
+  and `cancelled` are all terminal; acting on one again is a 409.
+
+**Leaving a league cancels your pending trades**, incoming and outgoing, with
+`resolution_note` recording why. The alternative — leaving them open — would
+let a trade complete between two people who are no longer leaguemates, which
+is the one rule the feature exists to enforce. They are cancelled rather than
+deleted so both sides can see what became of the offer.
+
+One consequence worth naming: `card_id` is `"{date}:{uid}"` keyed on the
+*creator*, and a traded card keeps its id. So rebuilding a night whose card
+you have traded away is refused with a 409 rather than silently overwriting
+that card in its new owner's collection.
+
+Trades go through FastAPI on the Admin SDK, which bypasses security rules, so
+`firestore.rules` needs no change — unlike messaging, no browser writes these
+documents directly.
+
 ## Next
 
-Collection → roster + payroll cap → waivers and free agency → trades (players,
-build picks, cap space) → simulation. The economy layer is specced in SLATE.md.
+Collection → roster + payroll cap → waivers and free agency → trades (build
+picks and cap space, now that card-for-card ships) → simulation. The economy
+layer is specced in SLATE.md.

@@ -570,6 +570,115 @@ button{cursor:pointer}
 }
 .join-league-link:hover{background:var(--ink);color:var(--paper);transform:translate(-2px,-2px);box-shadow:var(--press)}
 
+/* ---------------- trades ---------------- */
+/* Lives inside .league. No `filter` anywhere below -- see the note on
+   @keyframes press. The three pickers are native <select>s, so there is no
+   menu of ours to stack and nothing here can trap a dropdown. */
+.trades{
+  border-top:6px double var(--ink);
+  padding-top:24px;margin:34px 0 30px;
+}
+.trades__head{
+  display:flex;justify-content:space-between;align-items:flex-end;
+  gap:18px;flex-wrap:wrap;margin-bottom:20px;
+}
+.trades__title{font-size:40px;line-height:.86}
+@media(max-width:640px){.trades__title{font-size:30px}}
+.trades__refresh{
+  background:transparent;color:var(--ink);border:var(--rule);
+  font-family:var(--display);font-weight:700;text-transform:uppercase;
+  font-size:14px;letter-spacing:.16em;padding:7px 18px;
+  transition:background .12s ease,color .12s ease,transform .12s ease,box-shadow .12s ease;
+}
+.trades__refresh:not(:disabled):hover{background:var(--ink);color:var(--paper);transform:translate(-2px,-2px);box-shadow:var(--press)}
+.trades__refresh:disabled{color:var(--ink-faint);border-color:var(--ink-faint);cursor:not-allowed}
+
+.trades__subtitle{
+  font-family:var(--display);font-weight:700;text-transform:uppercase;
+  font-size:13px;letter-spacing:.24em;color:var(--ink-soft);
+  padding-bottom:7px;border-bottom:var(--rule);margin-bottom:14px;
+}
+.trades__note{font-style:italic;color:var(--ink-soft);font-size:15px;margin-bottom:8px}
+
+.trades__propose{margin-bottom:30px}
+.trades__form{display:flex;align-items:flex-end;gap:16px;flex-wrap:wrap}
+.trades__field{display:flex;flex-direction:column;gap:5px;flex:1 1 220px;min-width:0}
+.trades__label{
+  font-family:var(--display);font-weight:700;text-transform:uppercase;
+  font-size:11px;letter-spacing:.22em;color:var(--ink-faint);
+}
+.trades__select{
+  width:100%;max-width:100%;
+  background:var(--paper-2);border:var(--rule);color:var(--ink);
+  font-family:var(--display);font-weight:700;font-size:17px;letter-spacing:.03em;
+  padding:9px 12px;
+}
+.trades__select:disabled{background:var(--paper-3);color:var(--ink-faint);cursor:not-allowed}
+.trades__form button{
+  background:var(--red);color:var(--paper);border:var(--rule);
+  font-family:var(--display);font-weight:900;text-transform:uppercase;
+  font-size:21px;letter-spacing:.05em;padding:9px 30px;
+  transition:transform .12s ease,box-shadow .12s ease;
+}
+.trades__form button:not(:disabled):hover{transform:translate(-3px,-3px);box-shadow:var(--press)}
+.trades__form button:not(:disabled):active{transform:none;box-shadow:none}
+.trades__form button:disabled{
+  background:var(--paper-3);color:var(--ink-faint);
+  border-color:var(--ink-faint);cursor:not-allowed;
+}
+
+.trades__inbox{margin-bottom:26px}
+
+.trade{
+  border:var(--rule);background:var(--paper-2);
+  padding:14px 18px 16px;margin-bottom:14px;
+}
+/* Settled business reads back, not forward -- hairline, paper, no weight. */
+.trade--resolved{background:transparent;border:var(--hair)}
+.trade__head{
+  display:flex;justify-content:space-between;align-items:baseline;
+  gap:14px;padding-bottom:9px;border-bottom:var(--hair);margin-bottom:12px;
+}
+.trade__who{
+  font-family:var(--display);font-weight:900;text-transform:uppercase;
+  font-size:21px;letter-spacing:.03em;
+}
+.trade__status{
+  font-family:var(--display);font-weight:700;text-transform:uppercase;
+  font-size:11px;letter-spacing:.2em;color:var(--red);
+  border:1px solid var(--red);padding:1px 8px;flex-shrink:0;
+}
+.trade__status--done{color:var(--ink-faint);border-color:var(--ink-faint)}
+
+.trade__legs{display:flex;gap:26px;flex-wrap:wrap}
+.trade__leg{flex:1 1 220px;min-width:0}
+.trade__leg-label{
+  font-family:var(--display);font-weight:700;text-transform:uppercase;
+  font-size:11px;letter-spacing:.22em;color:var(--ink-faint);margin-bottom:3px;
+}
+.trade__card{font-variant-numeric:tabular-nums;font-size:15px}
+.trade__note{font-style:italic;color:var(--ink-soft);font-size:14px;margin-top:10px}
+
+.trade__actions{display:flex;gap:12px;flex-wrap:wrap;margin-top:14px}
+.trade__accept{
+  background:var(--ink);color:var(--paper);border:var(--rule);
+  font-family:var(--display);font-weight:900;text-transform:uppercase;
+  font-size:15px;letter-spacing:.12em;padding:7px 22px;
+  transition:background .12s ease,border-color .12s ease,transform .12s ease,box-shadow .12s ease;
+}
+.trade__accept:not(:disabled):hover{background:var(--red);border-color:var(--red);transform:translate(-2px,-2px);box-shadow:var(--press)}
+.trade__decline{
+  background:transparent;color:var(--ink);border:var(--rule);
+  font-family:var(--display);font-weight:900;text-transform:uppercase;
+  font-size:15px;letter-spacing:.12em;padding:7px 22px;
+  transition:background .12s ease,color .12s ease,transform .12s ease,box-shadow .12s ease;
+}
+.trade__decline:not(:disabled):hover{background:var(--ink);color:var(--paper);transform:translate(-2px,-2px);box-shadow:var(--press)}
+.trade__accept:disabled,.trade__decline:disabled{
+  background:var(--paper-3);color:var(--ink-faint);
+  border-color:var(--ink-faint);cursor:not-allowed;
+}
+
 /* ---------------- date picker ---------------- */
 .date-picker{position:relative}
 .date-picker__trigger{

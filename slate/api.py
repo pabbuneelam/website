@@ -11,6 +11,7 @@ from __future__ import annotations
 import os
 
 import uuid
+from dataclasses import replace
 from datetime import datetime, timezone
 
 from fastapi import Depends, FastAPI, Header, HTTPException
@@ -19,14 +20,24 @@ from pydantic import BaseModel, Field
 
 from . import attributes
 from .auth import AuthError, AuthUser, bearer_token, verify
-from .card import build_card
+from .card import build_card, card_id
 from .card import validate as validate_build
 from .leagues import unique_code
-from .models import Build, League, Membership, Selection, UserProfile
+from .models import (
+    TRADE_CANCELLED,
+    TRADE_PENDING,
+    TRADE_REJECTED,
+    Build,
+    League,
+    Membership,
+    Selection,
+    Trade,
+    UserProfile,
+)
 from .name import APP_NAME
 from .score import NightRater
 from .sources import FixtureSource
-from .store import MemoryStore, Store, default_store
+from .store import MemoryStore, Store, TradeConflict, default_store
 
 app = FastAPI(title=f"{APP_NAME} engine", version="0.2.0")
 
@@ -162,8 +173,21 @@ def submit_build(date: str, payload: BuildIn, user: AuthUser = Depends(current_u
     if problem:
         raise HTTPException(422, problem)
 
-    card = build_card(build, NightRater(night.boxscores), night.date)
     store = get_store()
+    # One build per user per night, so a rebuild overwrites your own card --
+    # but card_id is keyed on the creator, and a traded card keeps its id
+    # while its owner changes. Rebuilding that night would otherwise write
+    # straight over a card somebody else now owns.
+    existing = store.card(card_id(user.uid, night.date))
+    if existing is not None and existing.uid != user.uid:
+        raise HTTPException(
+            409,
+            f"you traded away the card you built on {night.date}; "
+            "rebuilding that night would overwrite it in its new owner's "
+            "collection.",
+        )
+
+    card = build_card(build, NightRater(night.boxscores), night.date)
     if not isinstance(store, MemoryStore) or not ON_SERVERLESS:
         # Writing to a MemoryStore on a stateless host is a lie -- the next
         # request lands elsewhere. Better to hand back the card and say the
@@ -323,6 +347,12 @@ def leave_league(user: AuthUser = Depends(current_user)):
     store = get_store()
     if store.membership(user.uid) is None:
         raise HTTPException(409, "you are not in a league")
+    # A pending trade is an offer between two league members, so leaving the
+    # league withdraws it. Leaving them open would let a trade complete
+    # between two people who are no longer leaguemates, which is the rule
+    # this whole feature exists to enforce. Cancelled rather than deleted, so
+    # both sides can see what happened and why.
+    _cancel_pending_trades(user.uid, store, "a party to this trade left the league")
     store.remove_membership(user.uid)
     return {"league": None, "members": []}
 
@@ -345,6 +375,207 @@ def get_my_league(user: AuthUser = Depends(current_user)):
         # rather than 500-ing a user who can do nothing about it.
         return {"league": None, "members": []}
     return _league_view(league, store)
+
+
+# ----------------------------------------------------------------- trades
+# Card for card, between two members of one league. No currency: it would
+# turn good predictors into farmers running a secondary market. Build picks
+# and cap space, the other two tradeable assets in the design, are out of
+# scope until an entitlement model and a payroll cap exist -- with no cap
+# there is nothing for "both sides must end cap-legal" to check.
+#
+# Every endpoint below is one rule said out loud:
+#   - both sides in the same league
+#   - you offer yours, you ask for theirs
+#   - accepting swaps both cards or neither
+#   - ownership is re-checked at accept, not only at propose
+#   - recipient accepts or rejects, proposer cancels, nobody else acts
+#   - resolved is terminal
+
+
+class TradeIn(BaseModel):
+    recipient_uid: str = Field(min_length=1, max_length=128)
+    offered_card_id: str = Field(min_length=1, max_length=200)
+    requested_card_id: str = Field(min_length=1, max_length=200)
+
+
+def _trade_view(trade: Trade, store: Store) -> dict:
+    """A trade with both cards attached.
+
+    The cards are read live rather than snapshotted onto the trade: an OVR
+    and a contract are what make an offer judgeable, and a card that has
+    since moved should show as it is now, not as it was.
+    """
+    return {
+        "trade": trade,
+        "offered_card": store.card(trade.offered_card_id),
+        "requested_card": store.card(trade.requested_card_id),
+    }
+
+
+def _my_league(uid: str, store: Store) -> Membership:
+    membership = store.membership(uid)
+    if membership is None:
+        raise HTTPException(
+            409, "you are not in a league, so there is nobody to trade with"
+        )
+    return membership
+
+
+def _owned_by(wanted_card_id: str, uid: str, store: Store, whose: str):
+    """A card that exists and belongs to `uid`, or a refusal naming which."""
+    card = store.card(wanted_card_id)
+    if card is None:
+        raise HTTPException(404, f"no card {wanted_card_id}")
+    if card.uid != uid:
+        raise HTTPException(409, f"{whose} does not own {wanted_card_id}")
+    return card
+
+
+def _a_trade_you_are_party_to(trade_id: str, uid: str, store: Store) -> Trade:
+    trade = store.trade(trade_id)
+    # 404 rather than 403 for a trade that is not yours: a trade id is not
+    # something a bystander should be able to probe for existence.
+    if trade is None or uid not in (trade.proposer_uid, trade.recipient_uid):
+        raise HTTPException(404, f"no trade {trade_id}")
+    return trade
+
+
+def _require_pending(trade: Trade) -> None:
+    """Accepted, rejected and cancelled are all terminal. Acting on one twice
+    is a 409, never a silent second swap."""
+    if not trade.pending:
+        raise HTTPException(409, f"this trade was already {trade.status}")
+
+
+def _cancel_pending_trades(uid: str, store: Store, reason: str) -> None:
+    for trade in store.trades(uid):
+        if trade.pending:
+            store.save_trade(
+                replace(
+                    trade,
+                    status=TRADE_CANCELLED,
+                    resolved_at=_now(),
+                    resolution_note=reason,
+                )
+            )
+
+
+@app.post("/trades")
+def propose_trade(payload: TradeIn, user: AuthUser = Depends(current_user)):
+    """Offer one of your cards for one of theirs.
+
+    Every check here is made again at accept time, because both sides can act
+    on the world in between. This one exists to fail fast and legibly.
+    """
+    _require_durable_store()
+    store = get_store()
+    mine = _my_league(user.uid, store)
+
+    if payload.recipient_uid == user.uid:
+        raise HTTPException(422, "you cannot trade with yourself")
+
+    theirs = store.membership(payload.recipient_uid)
+    if theirs is None or theirs.league_id != mine.league_id:
+        raise HTTPException(409, "you can only trade with members of your own league")
+
+    if payload.offered_card_id == payload.requested_card_id:
+        raise HTTPException(422, "a trade needs two different cards")
+
+    _owned_by(payload.offered_card_id, user.uid, store, "you")
+    _owned_by(
+        payload.requested_card_id,
+        payload.recipient_uid,
+        store,
+        theirs.display_name or "they",
+    )
+
+    trade = Trade(
+        trade_id=uuid.uuid4().hex[:12],
+        league_id=mine.league_id,
+        proposer_uid=user.uid,
+        recipient_uid=payload.recipient_uid,
+        offered_card_id=payload.offered_card_id,
+        requested_card_id=payload.requested_card_id,
+        status=TRADE_PENDING,
+        proposer_name=user.display_name,
+        recipient_name=theirs.display_name,
+        created_at=_now(),
+    )
+    store.save_trade(trade)
+    return _trade_view(trade, store)
+
+
+@app.get("/trades")
+def my_trades(user: AuthUser = Depends(current_user)):
+    """Both inboxes, newest first. Split by side because the actions differ:
+    you accept or reject what came in, you cancel what went out."""
+    _require_durable_store()
+    store = get_store()
+    trades = store.trades(user.uid)
+    return {
+        "incoming": [
+            _trade_view(t, store) for t in trades if t.recipient_uid == user.uid
+        ],
+        "outgoing": [
+            _trade_view(t, store) for t in trades if t.proposer_uid == user.uid
+        ],
+    }
+
+
+@app.post("/trades/{trade_id}/accept")
+def accept_trade(trade_id: str, user: AuthUser = Depends(current_user)):
+    """Take the deal. Both cards move or neither does.
+
+    The store owns this one outright: ownership is re-read and re-checked
+    inside the same transaction that writes the swap, so a card cannot be
+    traded away twice by two recipients accepting at the same moment.
+    """
+    _require_durable_store()
+    store = get_store()
+    trade = _a_trade_you_are_party_to(trade_id, user.uid, store)
+    if trade.recipient_uid != user.uid:
+        raise HTTPException(403, "only the recipient can accept a trade")
+    _require_pending(trade)
+
+    try:
+        done = store.accept_trade(trade_id, user.uid)
+    except TradeConflict as exc:
+        # Nothing was written. The usual cause is a card having moved between
+        # proposing and accepting -- precisely the case this refuses rather
+        # than half-applies.
+        raise HTTPException(409, str(exc)) from None
+    return _trade_view(done, store)
+
+
+@app.post("/trades/{trade_id}/reject")
+def reject_trade(trade_id: str, user: AuthUser = Depends(current_user)):
+    """Turn it down. Nothing moves."""
+    _require_durable_store()
+    store = get_store()
+    trade = _a_trade_you_are_party_to(trade_id, user.uid, store)
+    if trade.recipient_uid != user.uid:
+        raise HTTPException(403, "only the recipient can reject a trade")
+    _require_pending(trade)
+
+    done = replace(trade, status=TRADE_REJECTED, resolved_at=_now())
+    store.save_trade(done)
+    return _trade_view(done, store)
+
+
+@app.post("/trades/{trade_id}/cancel")
+def cancel_trade(trade_id: str, user: AuthUser = Depends(current_user)):
+    """Withdraw your own offer. Only the proposer can."""
+    _require_durable_store()
+    store = get_store()
+    trade = _a_trade_you_are_party_to(trade_id, user.uid, store)
+    if trade.proposer_uid != user.uid:
+        raise HTTPException(403, "only the proposer can cancel a trade")
+    _require_pending(trade)
+
+    done = replace(trade, status=TRADE_CANCELLED, resolved_at=_now())
+    store.save_trade(done)
+    return _trade_view(done, store)
 
 
 @app.get("/health")
