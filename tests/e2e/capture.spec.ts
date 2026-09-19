@@ -31,7 +31,13 @@ test('build a card end to end and browse the collection', async ({ page }, testI
   // it for the menu to wrongly render under.
   const firstPicker = slotPickers.nth(0)
   await firstPicker.locator('.dropdown__trigger').click()
-  await expect(firstPicker.locator('.dropdown__menu--open')).toBeVisible()
+  // toBeVisible() resolves the moment visibility:visible applies -- it does NOT
+  // wait for the opacity and max-height transitions. Screenshotting there
+  // catches the menu half-expanded and half-faded, which reads as a clipping
+  // and transparency bug that is not real. Wait for the transition to settle.
+  const menu = firstPicker.locator('.dropdown__menu--open')
+  await expect(menu).toBeVisible()
+  await expect(menu).toHaveCSS('opacity', '1')
   await page.screenshot({ path: shot(project, '02-dropdown-open'), fullPage: true })
 
   await firstPicker.locator('.dropdown__option:not(.dropdown__option--empty)').first().click()

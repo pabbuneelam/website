@@ -14,6 +14,13 @@ export default defineConfig({
   use: {
     baseURL: process.env.SLATE_BASE_URL ?? 'http://localhost:5173',
     trace: 'off',
+    // The design animates every entrance (see the `press` keyframe in
+    // styles.css). Without this, screenshots land mid-fade and the captures
+    // are both non-deterministic and misleading -- a fully working card reads
+    // as a rendering failure at 5% opacity. styles.css already honours
+    // prefers-reduced-motion, so emulating it settles the UI instantly and
+    // needs no arbitrary sleeps.
+    reducedMotion: 'reduce',
   },
   projects: [
     { name: 'desktop', use: { viewport: { width: 1440, height: 900 } } },
