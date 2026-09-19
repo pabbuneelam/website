@@ -7,6 +7,7 @@ import Collection from './components/Collection'
 import DatePicker from './components/DatePicker'
 import AccountBar from './components/AccountBar'
 import Account from './components/Account'
+import League from './components/League'
 import { useAuth } from './useAuth'
 
 const DEFAULT_DATE = '2025-11-14' // the only date with fixture data today
@@ -15,7 +16,7 @@ const DEFAULT_DATE = '2025-11-14' // the only date with fixture data today
 // config and real URLs for what is still a single screen with a sidebar's
 // worth of state -- when there are shareable pages (a league, another user's
 // collection) that trade flips, and this is where it flips.
-type Tab = 'build' | 'collection' | 'account'
+type Tab = 'build' | 'collection' | 'league' | 'account'
 
 export default function App() {
   const { user, loading: authLoading } = useAuth()
@@ -114,6 +115,14 @@ export default function App() {
         )}
         {user && (
           <button
+            className={activeTab === 'league' ? 'tabs__item tabs__item--active' : 'tabs__item'}
+            onClick={() => setTab('league')}
+          >
+            League
+          </button>
+        )}
+        {user && (
+          <button
             className={activeTab === 'account' ? 'tabs__item tabs__item--active' : 'tabs__item'}
             onClick={() => setTab('account')}
           >
@@ -157,6 +166,13 @@ export default function App() {
                 </button>
                 {/* Picking is free; only keeping the card needs an account. */}
                 {!user && !authLoading && <span className="hint">log in to build a card</span>}
+                {/* League play is the point of a collection, so the way in is
+                    on the screen people actually land on -- not only a tab. */}
+                {user && (
+                  <button className="join-league-link" onClick={() => setTab('league')}>
+                    Join league
+                  </button>
+                )}
               </div>
               {submitError && <p className="error-banner">{submitError}</p>}
 
@@ -169,6 +185,12 @@ export default function App() {
       {activeTab === 'collection' && user && (
         <main>
           <Collection />
+        </main>
+      )}
+
+      {activeTab === 'league' && user && (
+        <main>
+          <League user={user} />
         </main>
       )}
 

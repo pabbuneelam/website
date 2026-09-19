@@ -33,7 +33,8 @@ npm install
 npm run dev                                    # http://localhost:5173
 ```
 
-The dev server proxies `/attributes`, `/slates`, `/cards`, `/users`, `/health`
+The dev server proxies `/attributes`, `/slates`, `/cards`, `/users`, `/leagues`,
+`/health`
 straight to `127.0.0.1:8000` (see `frontend/vite.config.ts`) — no env vars
 needed locally. For a production build against a deployed backend, set
 `VITE_API_BASE` (see `frontend/.env.example`).
@@ -147,8 +148,10 @@ export GOOGLE_APPLICATION_CREDENTIALS=~/.secrets/questly-sa.json
 ```
 
 ```
-cards/{card_id}     one created player, id "{date}:{uid}"
-users/{uid}         one signed-in person
+cards/{card_id}       one created player, id "{date}:{uid}"
+users/{uid}           one signed-in person
+leagues/{league_id}   one league, carrying its invite code
+memberships/{uid}     which league that user is in
 ```
 
 A card carries a stable id and its creator from the moment it exists, because
@@ -166,7 +169,35 @@ rides along on each card, but purely so the UI can say who made it.
 | | |
 |---|---|
 | public | `/attributes`, `/slates/{date}`, `/cards/{uid}`, `/health` |
-| needs a token | `POST /slates/{date}/builds`, `/cards/me`, `/users/me` |
+| needs a token | `POST /slates/{date}/builds`, `/cards/me`, `/users/me`, every `/leagues` route |
+
+## Leagues
+
+**A user belongs to exactly one league at a time.** No switcher, no team
+layer: `uid` keys a membership exactly as it keys a card, so the rule is the
+data shape rather than a check — `memberships/{uid}` has nowhere to put a
+second one. Cards stay owned by the user; since a user is only ever in one
+league, global and per-league ownership collapse into the same thing.
+
+Joining is by **invite code** and nothing else — no public browse, no
+discovery, no moderation surface. Codes are six characters drawn from
+`23456789ABCDEFGHJKMNPQRSTUVWXYZ`: no `0`/`O` and no `1`/`I`/`L`, because a
+code gets read off one screen and typed into another, and a mistyped one is a
+404 that names no culprit. Generation asks the store whether a code is taken
+and retries, so collisions cannot ship.
+
+| | |
+|---|---|
+| `POST /leagues` | `{name}` → the league, its code, and you on the roster |
+| `POST /leagues/join` | `{code}` → 404 on an unknown code, 409 if already in a league |
+| `POST /leagues/leave` | 409 if there was nothing to leave |
+| `GET /leagues/me` | your league and its members; `{"league": null}` when you are in none |
+
+Joining while already in a league **fails with 409 rather than switching** —
+a silent switch would strand whatever the old league knew about that user.
+Not being in a league is an ordinary state, not an error, so `/leagues/me`
+returns a null league instead of a 404 the frontend would have to tell apart
+from real failures.
 
 The web config in `frontend/src/firebase.ts` is public by design — a Firebase
 web config identifies a project, it does not authorise anything. Verification

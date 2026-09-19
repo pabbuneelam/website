@@ -74,3 +74,28 @@ export interface Card {
   void: boolean
   void_reason: string
 }
+
+/** A league. The invite code is the whole join flow -- there is no browse. */
+export interface League {
+  league_id: string
+  name: string
+  code: string
+  owner_uid: string
+  created_at: string
+}
+
+/** One user's place in one league. A user is in exactly one at a time, so
+ *  uid keys this the same way it keys a card. */
+export interface Membership {
+  uid: string
+  league_id: string
+  display_name: string
+  joined_at: string
+}
+
+/** What /leagues/me, /leagues and /leagues/join all return. `league` is null
+ *  when the caller is not in one -- an ordinary state, not an error. */
+export interface LeagueView {
+  league: League | null
+  members: Membership[]
+}

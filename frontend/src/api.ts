@@ -1,4 +1,4 @@
-import type { AttributeDef, BuildPayload, Card, Slate, UserProfile } from './types'
+import type { AttributeDef, BuildPayload, Card, LeagueView, Slate, UserProfile } from './types'
 
 // Empty by default: dev proxies (see vite.config.ts) forward the API's own
 // root-level paths straight to uvicorn. Set VITE_API_BASE to call a deployed
@@ -79,4 +79,23 @@ export function getProfile(): Promise<UserProfile> {
 /** Record the signed-in user. Idempotent; called on every auth state change. */
 export function upsertProfile(): Promise<UserProfile> {
   return request('/users/me', { method: 'POST' })
+}
+
+/** The caller's league and its members. `league` is null when there is none. */
+export function getMyLeague(): Promise<LeagueView> {
+  return request('/leagues/me')
+}
+
+/** Start a league and join it. 409 if the caller is already in one. */
+export function createLeague(name: string): Promise<LeagueView> {
+  return request('/leagues', { method: 'POST', body: JSON.stringify({ name }) })
+}
+
+/** Join by invite code. 404 on an unknown code, 409 if already in a league. */
+export function joinLeague(code: string): Promise<LeagueView> {
+  return request('/leagues/join', { method: 'POST', body: JSON.stringify({ code }) })
+}
+
+export function leaveLeague(): Promise<LeagueView> {
+  return request('/leagues/leave', { method: 'POST' })
 }

@@ -10,6 +10,9 @@ from __future__ import annotations
 
 import os
 
+import uuid
+from datetime import datetime, timezone
+
 from fastapi import Depends, FastAPI, Header, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
@@ -18,7 +21,8 @@ from . import attributes
 from .auth import AuthError, AuthUser, bearer_token, verify
 from .card import build_card
 from .card import validate as validate_build
-from .models import Build, Selection, UserProfile
+from .leagues import unique_code
+from .models import Build, League, Membership, Selection, UserProfile
 from .name import APP_NAME
 from .score import NightRater
 from .sources import FixtureSource
@@ -213,6 +217,134 @@ def get_collection(uid: str):
     """
     _require_durable_store()
     return get_store().cards(uid)
+
+
+# ---------------------------------------------------------------- leagues
+# A user belongs to exactly one league at a time. No switcher, no team layer:
+# uid keys a membership exactly as it keys a card, so "which league am I in"
+# is a single document read and "am I already in one" is the same read.
+
+
+class LeagueIn(BaseModel):
+    name: str = Field(min_length=1, max_length=60)
+
+
+class JoinIn(BaseModel):
+    code: str = Field(min_length=1, max_length=16)
+
+
+def _now() -> str:
+    # Microseconds, not seconds: joined_at is what orders a roster, and two
+    # people joining inside the same second is the normal case when a code
+    # has just been pasted into a group chat.
+    return datetime.now(timezone.utc).isoformat(timespec="microseconds")
+
+
+def _league_view(league: League, store: Store) -> dict:
+    """A league and its roster -- the only shape the frontend ever needs."""
+    return {"league": league, "members": store.members(league.league_id)}
+
+
+def _refuse_if_already_in_a_league(uid: str, store: Store) -> None:
+    """One league at a time, said out loud.
+
+    Silently switching would strand whatever the old league knew about this
+    user, so this is a refusal rather than a move. 409, not 400: the request
+    is well formed, the state is what says no.
+    """
+    existing = store.membership(uid)
+    if existing is None:
+        return
+    league = store.league(existing.league_id)
+    where = f'"{league.name}"' if league else existing.league_id
+    raise HTTPException(
+        409,
+        f"you are already in {where}. Leave it before joining another league.",
+    )
+
+
+@app.post("/leagues")
+def create_league(payload: LeagueIn, user: AuthUser = Depends(current_user)):
+    """Start a league and join it. The response carries the invite code,
+    which is the only way anyone else gets in."""
+    _require_durable_store()
+    store = get_store()
+    _refuse_if_already_in_a_league(user.uid, store)
+
+    league = League(
+        league_id=uuid.uuid4().hex[:12],
+        name=payload.name.strip(),
+        code=unique_code(lambda code: store.league_by_code(code) is not None),
+        owner_uid=user.uid,
+        created_at=_now(),
+    )
+    store.save_league(league)
+    store.save_membership(
+        Membership(
+            uid=user.uid,
+            league_id=league.league_id,
+            display_name=user.display_name,
+            joined_at=_now(),
+        )
+    )
+    return _league_view(league, store)
+
+
+@app.post("/leagues/join")
+def join_league(payload: JoinIn, user: AuthUser = Depends(current_user)):
+    """Join by invite code. An unknown code is a 404, not a 500."""
+    _require_durable_store()
+    store = get_store()
+    _refuse_if_already_in_a_league(user.uid, store)
+
+    league = store.league_by_code(payload.code)
+    if league is None:
+        raise HTTPException(404, f"no league with invite code {payload.code.strip().upper()}")
+
+    store.save_membership(
+        Membership(
+            uid=user.uid,
+            league_id=league.league_id,
+            display_name=user.display_name,
+            joined_at=_now(),
+        )
+    )
+    return _league_view(league, store)
+
+
+@app.post("/leagues/leave")
+def leave_league(user: AuthUser = Depends(current_user)):
+    """Leave whatever league you are in.
+
+    Cards are owned by the uid and do not move -- a collection is global, and
+    since a user is only ever in one league that is the same thing.
+    """
+    _require_durable_store()
+    store = get_store()
+    if store.membership(user.uid) is None:
+        raise HTTPException(409, "you are not in a league")
+    store.remove_membership(user.uid)
+    return {"league": None, "members": []}
+
+
+@app.get("/leagues/me")
+def get_my_league(user: AuthUser = Depends(current_user)):
+    """The caller's league and its members, or a null league.
+
+    Not in a league is an ordinary state, not an error -- returning 404 here
+    would make the frontend guess which 404s are real failures.
+    """
+    _require_durable_store()
+    store = get_store()
+    membership = store.membership(user.uid)
+    if membership is None:
+        return {"league": None, "members": []}
+    league = store.league(membership.league_id)
+    if league is None:
+        # The membership outlived its league. Treat it as not being in one
+        # rather than 500-ing a user who can do nothing about it.
+        return {"league": None, "members": []}
+    return _league_view(league, store)
 
 
 @app.get("/health")
