@@ -17,6 +17,9 @@ dependencies = [
 dev = ["pytest>=8", "httpx>=0.27"]
 # Offline ingestion only -- never imported by the API.
 ingest = ["nba_api>=1.4"]
+# AI review step for tests/e2e/review.py -- never imported by the API or by
+# pytest. Playwright itself lives in tests/e2e/package.json (Node), not here.
+e2e = ["anthropic>=0.40"]
 
 [tool.vercel]
 # Vercel loads `app` from slate/api.py. Without this it would look for

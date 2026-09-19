@@ -150,6 +150,51 @@ cards/{card_id}     one created player, id "{date}:{creator}"
 A card carries a stable id and its creator from the moment it exists, because
 it outlives the roster it was made for — waived, claimed, signed, retired.
 
+## Visual QA (Playwright + AI review)
+
+`tests/e2e/` drives the real UI in a browser and screenshots it, because DOM
+existence assertions miss purely visual defects. This caught a real bug: an
+open dropdown once rendered *underneath* the form slots below it, while every
+element was still present in the DOM and every existence assertion passed —
+only the rendered pixels showed it.
+
+What it does:
+
+1. `capture.spec.ts` loads the app, opens each of the six slot dropdowns and
+   picks a player, enters a creator name, submits, waits for the card, and
+   switches to the "My Collection" tab — at both a desktop (1440×900) and a
+   mobile (390×844) viewport. It screenshots every meaningful state,
+   including one dropdown left **open** (the state that caught the real bug),
+   into `tests/e2e/screenshots/`.
+2. `review.py` sends those screenshots to Claude and asks specifically for
+   aesthetic/layout defects — overlap, clipping, contrast, misalignment,
+   z-index/stacking bugs, broken responsive behavior — not existence checks.
+   It prints a pass/fail verdict per screenshot with the specific issues
+   found, and exits non-zero if anything failed.
+
+Run it:
+
+```sh
+# once
+.venv/bin/pip install -e ".[e2e]"
+cd tests/e2e && npm install && npx playwright install --with-deps chromium
+
+# terminal 1
+.venv/bin/uvicorn slate.api:app --port 8000
+
+# terminal 2
+cd frontend && npm run dev
+
+# terminal 3
+cd tests/e2e
+npx playwright test                # writes screenshots/
+ANTHROPIC_API_KEY=sk-... ../../.venv/bin/python review.py
+```
+
+`review.py` reads its key from `ANTHROPIC_API_KEY`. If it's unset, it prints
+a message and exits 0 — screenshot capture works standalone without an API
+key; only the AI review step is skipped.
+
 ## Next
 
 Collection → roster + payroll cap → waivers and free agency → trades (players,
