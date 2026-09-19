@@ -19,3 +19,6 @@ frontend/.env.local
 .env
 .env.local
 .env*
+
+# Agent worktrees — working copies, never part of the repo.
+.claude/worktrees/
