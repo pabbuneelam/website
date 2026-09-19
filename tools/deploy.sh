@@ -23,7 +23,26 @@ case "$TARGET" in
     PROJECT=slate-demo
     rsync -a --exclude '.git' --exclude '.venv' --exclude 'frontend' \
           --exclude '__pycache__' --exclude '.pytest_cache' --exclude '.vercel' \
+          --exclude 'tests' --exclude 'node_modules' \
           "$ROOT/" "$STAGE/"
+    # The repo vercel.json builds the frontend, which this stage deliberately
+    # does not contain -- the SPA is its own project. Write the API's own
+    # config instead of shipping one that runs `cd frontend` into thin air.
+    #
+    # buildCommand must be set, not omitted: the Vercel project stored the
+    # frontend build command from an earlier deploy, and an absent key inherits
+    # that stored setting rather than clearing it.
+    cat > "$STAGE/vercel.json" <<'JSON'
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "buildCommand": "echo 'api project: no frontend build step'",
+  "functions": {
+    "slate/api.py": {
+      "excludeFiles": "{tests/**,tools/**,.venv/**,docs/**}"
+    }
+  }
+}
+JSON
     ;;
   ui)
     PROJECT=slate-ui
