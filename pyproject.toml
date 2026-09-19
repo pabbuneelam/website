@@ -11,6 +11,9 @@ dependencies = [
     "fastapi>=0.115",
     "uvicorn>=0.32",
     "google-cloud-firestore>=2.19",
+    # ID-token verification. Runtime, not dev: without it every authenticated
+    # endpoint 500s, which is worse than the app simply not starting.
+    "firebase-admin>=6.5",
 ]
 
 [project.optional-dependencies]

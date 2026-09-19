@@ -28,7 +28,9 @@ def best_available(rater: NightRater) -> Build:
                 used.add(pid)
                 selections.append(Selection(slot, pid))
                 break
-    return Build(creator="demo", selections=tuple(selections))
+    # The CLI has no signed-in user; a literal uid keeps it out of anyone's
+    # real collection.
+    return Build(uid="cli-demo", display_name="CLI demo", selections=tuple(selections))
 
 
 def render(card) -> None:

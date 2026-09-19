@@ -18,7 +18,8 @@ def full_selections(player_ids=None):
 
 
 def build(**kw):
-    return Build(creator=kw.get("creator", "v"), selections=kw.get("selections", full_selections()))
+    return Build(uid=kw.get("uid", "uid-v"), display_name=kw.get("display_name", "V"),
+                 selections=kw.get("selections", full_selections()))
 
 
 def roster():
@@ -41,14 +42,14 @@ def test_a_legal_build_passes():
 
 
 def test_all_six_slots_must_be_filled():
-    short = Build(creator="v", selections=full_selections()[:5])
+    short = Build(uid="uid-v", selections=full_selections()[:5])
     assert "exactly 6 selections" in validate(short)
 
 
 def test_one_player_cannot_supply_two_qualities():
     """Otherwise the single best night on the slate fills the whole card."""
     selections = full_selections([1, 1, 3, 4, 5, 6])
-    assert "more than one attribute" in validate(Build(creator="v", selections=selections))
+    assert "more than one attribute" in validate(Build(uid="uid-v", selections=selections))
 
 
 def test_a_slot_cannot_be_filled_twice():
@@ -57,16 +58,16 @@ def test_a_slot_cannot_be_filled_twice():
             [attributes.SLOTS[0], attributes.SLOTS[0]] + list(attributes.SLOTS[2:])
         )
     )
-    assert "filled twice" in validate(Build(creator="v", selections=selections))
+    assert "filled twice" in validate(Build(uid="uid-v", selections=selections))
 
 
 def test_unknown_slot_is_rejected():
     selections = (Selection("DUNKING", 1),) + full_selections()[1:]
-    assert "unknown attribute slot" in validate(Build(creator="v", selections=selections))
+    assert "unknown attribute slot" in validate(Build(uid="uid-v", selections=selections))
 
 
 def test_a_void_build_still_produces_a_card_that_says_why():
-    card = build_card(Build(creator="v", selections=full_selections()[:3]), NightRater([]), "2025-11-14")
+    card = build_card(Build(uid="uid-v", selections=full_selections()[:3]), NightRater([]), "2025-11-14")
     assert card.void
     assert card.ovr == 0
     assert card.void_reason
@@ -149,7 +150,22 @@ def test_missing_salary_is_excluded_from_the_average_not_treated_as_free():
     assert card.contract == round(sum(SALARIES[1:]) / 5)
 
 
-def test_card_id_is_stable_and_scoped_to_creator_and_night():
-    assert card_id("v", "2025-11-14") == card_id("v", "2025-11-14")
-    assert card_id("v", "2025-11-14") != card_id("pabb", "2025-11-14")
-    assert card_id("v", "2025-11-14") != card_id("v", "2025-11-15")
+def test_card_id_is_stable_and_scoped_to_uid_and_night():
+    assert card_id("uid-v", "2025-11-14") == card_id("uid-v", "2025-11-14")
+    assert card_id("uid-v", "2025-11-14") != card_id("uid-pabb", "2025-11-14")
+    assert card_id("uid-v", "2025-11-14") != card_id("uid-v", "2025-11-15")
+
+
+def test_card_id_is_keyed_on_the_uid_not_the_display_name():
+    """Two people who both call themselves "demo" must not collide."""
+    one = build_card(build(uid="uid-one", display_name="demo"), NightRater(roster()), "2025-11-14")
+    two = build_card(build(uid="uid-two", display_name="demo"), NightRater(roster()), "2025-11-14")
+    assert one.card_id != two.card_id
+    assert one.creator_name == two.creator_name == "demo"
+
+
+def test_a_card_carries_a_readable_creator_name():
+    """The uid keys it; the name is the only part a reader can use."""
+    card = build_card(build(uid="uid-v", display_name="Vrishin"), NightRater(roster()), "2025-11-14")
+    assert card.uid == "uid-v"
+    assert card.creator_name == "Vrishin"

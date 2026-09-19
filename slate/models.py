@@ -91,10 +91,16 @@ class Selection:
 
 @dataclass(frozen=True)
 class Build:
-    """A user's six selections for one night."""
+    """A user's six selections for one night.
 
-    creator: str
+    ``uid`` is the verified Firebase identity and is the only thing that keys
+    anything. ``display_name`` is user-controlled text carried along so a card
+    can say who made it.
+    """
+
+    uid: str
     selections: tuple[Selection, ...]
+    display_name: str = ""
 
 
 @dataclass(frozen=True)
@@ -131,11 +137,15 @@ class Card:
     """
 
     card_id: str
-    creator: str
+    uid: str                   # verified Firebase identity of the creator
     date: str
     ovr: int
     contract: int              # average annual salary of the players used
     ratings: tuple[Rating, ...]
+    # Denormalised on purpose: a card outlives rosters and leagues, and the
+    # UI has to name its creator without a second read. It is a snapshot --
+    # the profile document is the current truth.
+    creator_name: str = ""
     void: bool = False
     void_reason: str = ""
 
@@ -144,3 +154,18 @@ class Card:
         """OVR per $M/yr. The Moneyball number -- a 94 at $14M beats a 96 at $50M."""
         millions = self.contract / 1_000_000
         return self.ovr / millions if millions else 0.0
+
+
+@dataclass(frozen=True)
+class UserProfile:
+    """One signed-in person.
+
+    Written on first sign-in and refreshed on later ones. The uid comes from a
+    verified token; everything else is whatever Google handed the browser.
+    """
+
+    uid: str
+    display_name: str
+    email: str | None = None
+    photo_url: str | None = None
+    created_at: str = ""       # ISO 8601 UTC, set once and never rewritten

@@ -1,4 +1,4 @@
-import type { AttributeDef, BuildPayload, Card, Slate } from './types'
+import type { AttributeDef, BuildPayload, Card, Slate, UserProfile } from './types'
 
 // Empty by default: dev proxies (see vite.config.ts) forward the API's own
 // root-level paths straight to uvicorn. Set VITE_API_BASE to call a deployed
@@ -14,10 +14,24 @@ export class ApiError extends Error {
   }
 }
 
+// Set once, by useAuth. A provider rather than a token string because Firebase
+// ID tokens expire after an hour and the SDK mints a fresh one on demand --
+// caching the string here would sign the user out mid-session.
+let tokenProvider: () => Promise<string | null> = async () => null
+
+export function setTokenProvider(provider: () => Promise<string | null>) {
+  tokenProvider = provider
+}
+
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
+  const token = await tokenProvider()
   const res = await fetch(`${API_BASE}${path}`, {
-    headers: { 'Content-Type': 'application/json' },
     ...init,
+    headers: {
+      'Content-Type': 'application/json',
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      ...init?.headers,
+    },
   })
   if (!res.ok) {
     let detail = res.statusText
@@ -47,6 +61,22 @@ export function submitBuild(date: string, payload: BuildPayload): Promise<Card> 
   })
 }
 
-export function getCollection(creator: string): Promise<Card[]> {
-  return request(`/cards/${encodeURIComponent(creator)}`)
+/** The signed-in user's own collection. Needs a token. */
+export function getMyCollection(): Promise<Card[]> {
+  return request('/cards/me')
+}
+
+/** Anyone's collection, by uid. Public -- leagues will want this. */
+export function getCollection(uid: string): Promise<Card[]> {
+  return request(`/cards/${encodeURIComponent(uid)}`)
+}
+
+/** The stored profile for the signed-in user. */
+export function getProfile(): Promise<UserProfile> {
+  return request('/users/me')
+}
+
+/** Record the signed-in user. Idempotent; called on every auth state change. */
+export function upsertProfile(): Promise<UserProfile> {
+  return request('/users/me', { method: 'POST' })
 }
