@@ -185,21 +185,36 @@ button{cursor:pointer}
 
 .dropdown__menu{
   position:absolute;top:calc(100% + 5px);left:0;right:0;z-index:40;
-  list-style:none;background:var(--paper);border:var(--rule);
+  background:var(--paper);border:var(--rule);
   box-shadow:var(--press);
   max-height:0;overflow:hidden;opacity:0;pointer-events:none;visibility:hidden;
   transition:max-height .22s ease,opacity .14s ease,visibility .22s;
 }
-.dropdown__menu--open{max-height:296px;overflow-y:auto;opacity:1;pointer-events:auto;visibility:visible}
+.dropdown__menu--open{max-height:340px;overflow-y:auto;opacity:1;pointer-events:auto;visibility:visible}
+
+.dropdown__search{
+  position:sticky;top:0;z-index:1;width:100%;
+  background:var(--paper);border:0;border-bottom:var(--rule);
+  padding:9px 13px;font-family:var(--body);font-style:italic;
+  font-size:15px;color:var(--ink);
+}
+.dropdown__search::placeholder{color:var(--ink-faint)}
+.dropdown__search:focus{outline:0;background:var(--paper-2)}
+
+.dropdown__list{list-style:none}
 .dropdown__option{
   padding:9px 13px;font-size:14.5px;border-bottom:var(--hair);
   transition:background .1s ease,color .1s ease;
 }
 .dropdown__option:last-child{border-bottom:0}
-.dropdown__option:hover{background:var(--red);color:var(--paper)}
+.dropdown__option:hover,.dropdown__option--highlighted{background:var(--red);color:var(--paper)}
 .dropdown__option--selected{background:var(--ink);color:var(--paper)}
 .dropdown__option--empty{font-style:italic;color:var(--ink-faint)}
-.dropdown__option--empty:hover{color:var(--paper)}
+.dropdown__option--empty:hover,.dropdown__option--empty.dropdown__option--highlighted{color:var(--paper)}
+
+.dropdown__no-match{
+  padding:12px 13px;font-style:italic;color:var(--ink-faint);font-size:14px;
+}
 
 /* ---------------- submit ---------------- */
 .submit-row{display:flex;align-items:center;gap:18px;flex-wrap:wrap;margin-bottom:34px}
