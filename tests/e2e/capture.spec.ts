@@ -12,7 +12,7 @@ function shot(project: string, step: string) {
   return path.join(SCREENSHOT_DIR, `${project}-${step}.png`)
 }
 
-test('fill every slot, signed out', async ({ page }, testInfo) => {
+test('build a card end to end and browse the collection', async ({ page }, testInfo) => {
   const project = testInfo.project.name
 
   await page.goto('/')
@@ -49,9 +49,21 @@ test('fill every slot, signed out', async ({ page }, testInfo) => {
 
   await page.screenshot({ path: shot(project, '03-all-slots-filled'), fullPage: true })
 
-  // Stops here on purpose. Building a card and opening the collection need a
-  // signed-in user, and a headless browser cannot complete Google OAuth. What
-  // a signed-out visitor must see instead is the prompt, not a live button.
+  // Signed out, the form is fillable but not submittable.
   await expect(page.getByRole('button', { name: 'Build card' })).toBeDisabled()
   await expect(page.getByText('log in to build a card')).toBeVisible()
+
+  // The real Log in button. Under VITE_FIREBASE_EMULATOR it signs a fixed QA
+  // identity into the Auth emulator instead of opening a Google popup.
+  await page.getByRole('button', { name: 'Log in' }).click()
+  await expect(page.locator('.account-bar__name')).toHaveText('QA Tester')
+  await page.screenshot({ path: shot(project, '04-signed-in'), fullPage: true })
+
+  await page.getByRole('button', { name: 'Build card' }).click()
+  await expect(page.locator('.card-result')).toBeVisible({ timeout: 10_000 })
+  await page.screenshot({ path: shot(project, '05-card-result'), fullPage: true })
+
+  await page.getByRole('button', { name: 'My Collection' }).click()
+  await expect(page.locator('.collection__list')).toBeVisible()
+  await page.screenshot({ path: shot(project, '06-my-collection'), fullPage: true })
 })
