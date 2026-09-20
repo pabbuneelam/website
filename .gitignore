@@ -23,5 +23,5 @@ frontend/.env.local
 # Agent worktrees — working copies, never part of the repo.
 .claude/worktrees/
 
-# Firebase emulator logs
+# Firebase emulator logs (tests/rules_check.py)
 *-debug.log
