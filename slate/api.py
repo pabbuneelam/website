@@ -589,6 +589,7 @@ def health():
         "durable": not isinstance(live, MemoryStore),
         "firebase_project": os.environ.get("SLATE_FIREBASE_PROJECT"),
         "serverless": ON_SERVERLESS,
+        "dev_auth": os.environ.get("SLATE_DEV_AUTH") == "1",
     }
 
 

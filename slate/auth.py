@@ -76,8 +76,54 @@ def bearer_token(authorization: str | None) -> str:
     return token.strip()
 
 
+def dev_auth_enabled() -> bool:
+    """Local-only escape hatch: `SLATE_DEV_AUTH=1` skips token verification.
+
+    Exists so the UI can be exercised on a machine with no Firebase
+    credentials. It fails *closed*: if the flag is set next to anything that
+    marks a real deployment, that is a misconfiguration to surface, not a flag
+    to quietly honour or quietly ignore.
+    """
+    if os.environ.get("SLATE_DEV_AUTH") != "1":
+        return False
+    if os.environ.get("SLATE_FIREBASE_PROJECT") or os.environ.get("VERCEL"):
+        raise RuntimeError(
+            "SLATE_DEV_AUTH=1 is set alongside SLATE_FIREBASE_PROJECT or VERCEL. "
+            "Dev auth accepts unsigned tokens and must never run against a real "
+            "project or deploy. Unset one of them."
+        )
+    return True
+
+
+def _verify_unsigned(token: str) -> AuthUser:
+    """Read the claims out of a token *without checking its signature*.
+
+    Only reachable through `dev_auth_enabled()`. The browser's real Google
+    sign-in still supplies the identity, so cards are attributed to the person
+    at the keyboard; nothing about the token is trusted.
+    """
+    import jwt
+
+    try:
+        claims = jwt.decode(token, options={"verify_signature": False})
+    except jwt.PyJWTError as exc:
+        raise AuthError(f"dev auth: token is not a JWT: {exc}") from exc
+    uid = claims.get("user_id") or claims.get("sub")
+    if not uid:
+        raise AuthError("dev auth: token carries no uid")
+    return AuthUser(
+        uid=uid,
+        display_name=claims.get("name") or claims.get("email") or uid,
+        email=claims.get("email"),
+        photo_url=claims.get("picture"),
+    )
+
+
 def verify(token: str) -> AuthUser:
     """A Firebase ID token in, a verified identity out."""
+    if dev_auth_enabled():
+        return _verify_unsigned(token)
+
     from firebase_admin import auth as fb_auth
 
     try:
