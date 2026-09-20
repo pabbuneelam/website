@@ -20,7 +20,7 @@ See [SLATE.md](SLATE.md) for the full design. This repo holds the daily loop
 ```sh
 python -m venv .venv && .venv/bin/pip install -e ".[dev]"
 
-.venv/bin/python -m pytest                     # 114 tests
+.venv/bin/python -m pytest
 .venv/bin/python -m slate build 2025-11-14     # build a card from the fixture
 .venv/bin/uvicorn slate.api:app --reload       # http://127.0.0.1:8000/docs
 ```
@@ -34,7 +34,7 @@ npm run dev                                    # http://localhost:5173
 ```
 
 The dev server proxies `/attributes`, `/slates`, `/cards`, `/users`, `/leagues`,
-`/health`
+`/trades`, `/health`
 straight to `127.0.0.1:8000` (see `frontend/vite.config.ts`) — no env vars
 needed locally. For a production build against a deployed backend, set
 `VITE_API_BASE` (see `frontend/.env.example`).
@@ -144,7 +144,13 @@ Nothing is paid for yet; everything runs on `slate/fixtures/2025-11-14.json`.
 
 ## Deployed
 
-**https://slate-theta-two.vercel.app** — `/docs` for the OpenAPI UI.
+**https://slate-demo-six.vercel.app** — `/docs` for the OpenAPI UI, `/health`
+for which store is live. This is Vercel project `slate-demo`, backed by
+Firestore. The SPA is a second project, `slate-ui`, built against it.
+
+`slate-theta-two.vercel.app` is an older deploy of the same API with no
+database behind it (`/health` reports `MemoryStore`), so every write there
+503s. Do not point a frontend at it.
 
 Vercel resolves the entrypoint from `[tool.vercel] entrypoint = "slate.api:app"`
 in `pyproject.toml`. `vercel.json` trims tests and tooling but **must not
@@ -156,12 +162,20 @@ beats behaving randomly.
 
 ```sh
 vercel env add SLATE_FIREBASE_PROJECT production
-vercel env add GOOGLE_APPLICATION_CREDENTIALS_JSON production   # MINIFIED to one line
-vercel deploy --prod
+base64 -i ~/.secrets/questly-sa.json | tr -d '\n' | vercel env add GOOGLE_APPLICATION_CREDENTIALS_B64 production
+
+tools/deploy.sh api        # -> slate-demo
+tools/deploy.sh ui         # -> slate-ui
 ```
 
-The credentials JSON **must be single-line**. A pretty-printed multi-line value
-breaks the build environment.
+`GOOGLE_APPLICATION_CREDENTIALS_B64` is preferred: a raw service-account JSON
+carries a PEM key full of newlines and quotes, which platform env vars mangle.
+`GOOGLE_APPLICATION_CREDENTIALS_JSON` also works but **must be minified to one
+line**.
+
+Deploy through `tools/deploy.sh`, not `vercel deploy` from the repo: the CLI
+sees a git remote this Vercel account cannot access and the build stalls with
+no logs (#10). The script stages a copy outside the repo.
 
 ## Persistence
 
@@ -248,11 +262,12 @@ only the rendered pixels showed it.
 What it does:
 
 1. `capture.spec.ts` loads the app, opens each of the six slot dropdowns and
-   picks a player, enters a creator name, submits, waits for the card, and
-   switches to the "My Collection" tab — at both a desktop (1440×900) and a
-   mobile (390×844) viewport. It screenshots every meaningful state,
-   including one dropdown left **open** (the state that caught the real bug),
-   into `tests/e2e/screenshots/`.
+   picks a player — at both a desktop (1440×900) and a mobile (390×844)
+   viewport. It screenshots every meaningful state, including one dropdown
+   left **open** (the state that caught the real bug), into
+   `tests/e2e/screenshots/`. It stops at the filled form: building a card and
+   the collection need a Google sign-in, which a headless browser cannot do
+   (#18).
 2. `review.py` sends those screenshots to Claude and asks specifically for
    aesthetic/layout defects — overlap, clipping, contrast, misalignment,
    z-index/stacking bugs, broken responsive behavior — not existence checks.
