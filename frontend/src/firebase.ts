@@ -7,12 +7,12 @@ import { getFirestore } from 'firebase/firestore'
 // the ID token the backend verifies, plus the authorised-domains list in the
 // console.
 const firebaseConfig = {
-  apiKey: 'AIzaSyACp5uAVW7qgz37fC4KBK3W9ujRJkygdg0',
-  authDomain: 'questly-7f3a2.firebaseapp.com',
-  projectId: 'questly-7f3a2',
-  storageBucket: 'questly-7f3a2.firebasestorage.app',
-  messagingSenderId: '76941771778',
-  appId: '1:76941771778:web:f6b8ce393cab367711d31b',
+  apiKey: 'AIzaSyAD0wCL5TpgVH8LpkBk-1iaGtE5cFiOdqg',
+  authDomain: 'slate-da17a.firebaseapp.com',
+  projectId: 'slate-da17a',
+  storageBucket: 'slate-da17a.firebasestorage.app',
+  messagingSenderId: '33647225727',
+  appId: '1:33647225727:web:0c533b9e29133cdcbd084a',
 }
 
 const app = initializeApp(firebaseConfig)
