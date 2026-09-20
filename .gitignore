@@ -26,5 +26,5 @@ frontend/.env.local
 # Built frontend, copied here by vercel.json and served by slate/api.py
 slate/static/
 
-# Firebase emulator logs
+# Firebase emulator logs (tests/rules_check.py)
 *-debug.log
