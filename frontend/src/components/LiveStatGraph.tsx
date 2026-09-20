@@ -1,35 +1,46 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type { Rating } from '../types'
 
-// Text content can't be CSS-transitioned, so the "FINAL" number gets its own
-// rAF tween -- it glides between values in step with the SVG geometry, which
-// transitions via CSS (same DOM nodes, keyed by time so React only touches
-// cx/cy/d and the browser interpolates the rest).
-function useAnimatedNumber(target: number, duration = 480) {
-  const [display, setDisplay] = useState(target)
-  const displayRef = useRef(target)
+const easeInOutCubic = (t: number) => (t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2)
+
+const prefersReducedMotion = () =>
+  typeof window !== 'undefined' && window.matchMedia('(prefers-reduced-motion: reduce)').matches
+
+// Tweens a vector of numbers toward `target` in JS rather than via CSS
+// `transition: d`, which only Chromium interpolates. Retargeting mid-flight
+// starts from wherever the values currently are, so rapid clicks stay smooth.
+// The first render shows `target` as-is; the CSS draw-in handles the intro.
+function useTween(target: number[], duration = 700) {
+  const [values, setValues] = useState(target)
+  const valuesRef = useRef(target)
   const rafRef = useRef<number | null>(null)
+  const key = target.join(',')
 
   useEffect(() => {
     if (rafRef.current !== null) cancelAnimationFrame(rafRef.current)
-    const from = displayRef.current
-    if (from === target) return
+    const from = valuesRef.current
+    const set = (next: number[]) => {
+      valuesRef.current = next
+      setValues(next)
+    }
+    if (prefersReducedMotion()) {
+      set(target)
+      return
+    }
     const start = performance.now()
     const tick = (now: number) => {
       const t = Math.min(1, (now - start) / duration)
-      const eased = 1 - Math.pow(1 - t, 3)
-      const next = from + (target - from) * eased
-      displayRef.current = next
-      setDisplay(next)
+      const eased = easeInOutCubic(t)
+      set(target.map((v, i) => from[i] + (v - from[i]) * eased))
       if (t < 1) rafRef.current = requestAnimationFrame(tick)
     }
     rafRef.current = requestAnimationFrame(tick)
     return () => {
       if (rafRef.current !== null) cancelAnimationFrame(rafRef.current)
     }
-  }, [target, duration])
+  }, [key, duration])
 
-  return display
+  return values
 }
 
 const TIMES = [0, 8, 16, 24, 32, 40, 48]
@@ -91,11 +102,29 @@ function buildCurve(final: number, seedKey: string, integer: boolean): number[] 
   return curve
 }
 
-interface Hover {
-  x: number
-  y: number
-  tLabel: string
-  valueLabel: string
+// Monotone cubic through the points (Fritsch-Carlson, like d3.curveMonotoneX).
+// The curve is a running total, so it must never dip or overshoot between
+// marks -- a plain Catmull-Rom spline would.
+function smoothPath(pts: { x: number; y: number }[]) {
+  const n = pts.length
+  const dx: number[] = []
+  const slope: number[] = []
+  for (let i = 0; i < n - 1; i++) {
+    dx.push(pts[i + 1].x - pts[i].x)
+    slope.push((pts[i + 1].y - pts[i].y) / dx[i])
+  }
+  const m = new Array<number>(n)
+  m[0] = slope[0]
+  m[n - 1] = slope[n - 2]
+  for (let i = 1; i < n - 1; i++) {
+    m[i] = slope[i - 1] * slope[i] <= 0 ? 0 : (2 * slope[i - 1] * slope[i]) / (slope[i - 1] + slope[i])
+  }
+  let d = `M ${pts[0].x},${pts[0].y}`
+  for (let i = 0; i < n - 1; i++) {
+    const h = dx[i] / 3
+    d += ` C ${pts[i].x + h},${pts[i].y + m[i] * h} ${pts[i + 1].x - h},${pts[i + 1].y - m[i + 1] * h} ${pts[i + 1].x},${pts[i + 1].y}`
+  }
+  return d
 }
 
 export default function LiveStatGraph({ ratings }: { ratings: Rating[] }) {
@@ -106,7 +135,7 @@ export default function LiveStatGraph({ ratings }: { ratings: Rating[] }) {
   const [slot, setSlot] = useState(defaultSlot)
   const [metric, setMetric] = useState<MetricId>('fantasy')
   const [showTable, setShowTable] = useState(false)
-  const [hover, setHover] = useState<Hover | null>(null)
+  const [hoverIdx, setHoverIdx] = useState<number | null>(null)
 
   const rating = ratings.find((r) => r.slot === slot) ?? ratings[0]
   const metricDef = METRICS.find((m) => m.id === metric)!
@@ -114,22 +143,32 @@ export default function LiveStatGraph({ ratings }: { ratings: Rating[] }) {
   const max = Math.max(finalValue * 1.2, finalValue > 0 ? finalValue + 2 : 5)
 
   const curve = buildCurve(finalValue, `${rating.player_id}-${metric}`, metric !== 'fantasy')
-  const points = TIMES.map((t, i) => ({ t, val: curve[i], x: scaleX(t), y: scaleY(curve[i], max) }))
+
+  // Animate the curve and the axis scale together so points and gridlines
+  // glide as one.
+  const target = [...curve, max]
+  const tweened = useTween(target)
+  const shownCurve = tweened.slice(0, curve.length)
+  const shownMax = tweened[curve.length]
+
+  const points = TIMES.map((t, i) => ({ t, val: curve[i], x: scaleX(t), y: scaleY(shownCurve[i], shownMax) }))
   const last = points[points.length - 1]
 
-  const linePath = 'M ' + points.map((p) => `${p.x},${p.y}`).join(' L ')
+  const linePath = smoothPath(points)
   const areaPath = `${linePath} L ${last.x},${BASE_Y} L ${points[0].x},${BASE_Y} Z`
 
   const gridLines = [0, 0.5, 1].map((frac) => ({
     frac,
-    y: scaleY(frac * max, max),
-    label: Math.round(frac * max * 10) / 10,
+    y: scaleY(frac * shownMax, shownMax),
+    label: Math.round(frac * shownMax * 10) / 10,
   }))
 
   const tableRows = points.map((p) => ({ time: `${p.t}'`, value: `${p.val} ${metricDef.unit}` }))
 
-  const animatedFinal = useAnimatedNumber(finalValue)
+  // The chip reads the tweened endpoint, so it counts in step with the line.
+  const animatedFinal = shownCurve[shownCurve.length - 1]
   const finalDisplay = metric === 'fantasy' ? animatedFinal.toFixed(1) : Math.round(animatedFinal)
+  const hover = hoverIdx === null ? null : points[hoverIdx]
 
   return (
     <div className="live-stat-card">
@@ -213,7 +252,7 @@ export default function LiveStatGraph({ ratings }: { ratings: Rating[] }) {
               </text>
             ))}
 
-            {points.map((p) => (
+            {points.map((p, i) => (
               <g key={p.t}>
                 <circle className="hero-pt" cx={p.x} cy={p.y} r={3.5} />
                 <circle
@@ -221,19 +260,22 @@ export default function LiveStatGraph({ ratings }: { ratings: Rating[] }) {
                   cx={p.x}
                   cy={p.y}
                   r={10}
-                  onMouseEnter={() =>
-                    setHover({ x: p.x, y: p.y - 6, tLabel: `${p.t}' mark`, valueLabel: `${p.val} ${metricDef.unit}` })
-                  }
-                  onMouseLeave={() => setHover(null)}
+                  onMouseEnter={() => setHoverIdx(i)}
+                  onMouseLeave={() => setHoverIdx(null)}
                 />
               </g>
             ))}
           </svg>
 
           {hover && (
-            <div className="tooltip" style={{ left: hover.x, top: hover.y }}>
-              <div className="tooltip__muted">{hover.tLabel}</div>
-              <div className="tooltip__value">{hover.valueLabel}</div>
+            <div
+              className="tooltip"
+              style={{ left: `${(hover.x / CHART_W) * 100}%`, top: `${((hover.y - 6) / CHART_H) * 100}%` }}
+            >
+              <div className="tooltip__muted">{hover.t}' mark</div>
+              <div className="tooltip__value">
+                {hover.val} {metricDef.unit}
+              </div>
             </div>
           )}
         </div>
