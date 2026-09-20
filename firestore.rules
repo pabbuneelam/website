@@ -83,17 +83,37 @@ service cloud.firestore {
             && request.auth.uid in participants();
       }
 
+      // Everything on the document besides the participant list is the
+      // last-message preview, written by whoever just sent. Held to the same
+      // standard as a message: a fixed key set, the writer named honestly,
+      // the server's clock, and a bounded size -- otherwise either side could
+      // relabel the other in the conversation list, forge a preview from
+      // them, or park a megabyte of junk here. 140 mirrors the slice in
+      // frontend/src/chat.ts.
+      function validPreview() {
+        let d = request.resource.data;
+        return d.keys().hasOnly(['participants', 'names', 'lastMessage', 'lastMessageAt', 'lastSenderId'])
+            && d.lastSenderId == request.auth.uid
+            && d.lastMessageAt == request.time
+            && d.lastMessage is string
+            && d.lastMessage.size() <= 140
+            && d.names is map
+            && d.names.keys().hasOnly(d.participants)
+            && d.names.values().join('').size() <= 400;
+      }
+
       // Only the two participants can see the thread exists, or its preview.
       allow read: if signedIn() && request.auth.uid in resource.data.participants;
 
-      allow create: if signedIn() && wellFormed();
+      allow create: if signedIn() && wellFormed() && validPreview();
 
       // Updates carry the last-message preview and its timestamp. The
       // participant list itself is frozen: a thread cannot be handed to a
       // third party after the fact.
       allow update: if signedIn()
                     && request.auth.uid in resource.data.participants
-                    && participants() == resource.data.participants;
+                    && participants() == resource.data.participants
+                    && validPreview();
 
       // Out of scope for the prototype, and deleting a thread out from under
       // the other person is not something one participant should decide.
