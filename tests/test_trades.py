@@ -478,3 +478,48 @@ def test_store_accept_refuses_a_trade_that_is_already_resolved(trade_store):
 def test_store_accept_refuses_a_trade_that_is_gone(trade_store):
     with pytest.raises(TradeConflict, match="no longer exists"):
         trade_store.accept_trade("nope", "uid-b")
+
+
+# ------------------------------- closing a trade races with accepting it
+# Reject, cancel and the leave-league sweep used to read a trade, see
+# `pending`, and blind-write the new status. An accept landing in between had
+# already swapped the cards, and the record then said it never happened.
+
+
+def test_store_resolve_closes_a_pending_trade(trade_store):
+    stocked(trade_store)
+    done = trade_store.resolve_trade("t1", "rejected", "changed my mind")
+    assert (done.status, done.resolution_note) == ("rejected", "changed my mind")
+    assert done.resolved_at
+    assert trade_store.trade("t1").status == "rejected"
+
+
+def test_store_resolve_never_overwrites_an_accepted_trade(trade_store):
+    stocked(trade_store)
+    trade_store.accept_trade("t1", "uid-b")
+    with pytest.raises(TradeConflict, match="already accepted"):
+        trade_store.resolve_trade("t1", "cancelled")
+    assert trade_store.trade("t1").status == "accepted"
+
+
+def test_store_resolve_refuses_a_trade_that_is_gone(trade_store):
+    with pytest.raises(TradeConflict, match="no longer exists"):
+        trade_store.resolve_trade("nope", "cancelled")
+
+
+@pytest.mark.parametrize("who, action", [("uid-b", "reject"), ("uid-a", "cancel")])
+def test_an_accept_that_lands_first_wins_over_a_reject_or_cancel(monkeypatch, who, action):
+    trade_id = a_pending_trade()
+    live = store()
+    stale = live.trade(trade_id)
+    live.accept_trade(trade_id, "uid-b")
+    # The endpoint's own read still sees the trade as it was a moment ago.
+    real_read = live.trade
+    monkeypatch.setattr(live, "trade", lambda _id: stale)
+
+    as_user(who)
+    response = client.post(f"/trades/{trade_id}/{action}")
+
+    assert response.status_code == 409, response.text
+    assert real_read(trade_id).status == "accepted"
+    assert owner("2025-11-14:uid-a") == "uid-b"

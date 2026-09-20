@@ -101,6 +101,21 @@ def _acceptance(
     )
 
 
+def _resolution(trade: Trade | None, status: str, note: str) -> Trade:
+    """A pending trade closed without a swap, or a TradeConflict.
+
+    The `pending` check is made HERE, on the copy read inside the caller's
+    transaction, for the same reason `_acceptance` re-checks ownership: an
+    accept can land between an endpoint reading the trade and writing to it,
+    and a blind write would then mark a completed swap as rejected.
+    """
+    if trade is None:
+        raise TradeConflict("that trade no longer exists")
+    if not trade.pending:
+        raise TradeConflict(f"this trade was already {trade.status}")
+    return replace(trade, status=status, resolved_at=_stamp(), resolution_note=note)
+
+
 class Store(Protocol):
     def save_card(self, card: Card) -> None: ...
 
@@ -161,6 +176,15 @@ class Store(Protocol):
         """Every trade this user is party to, either side, newest first."""
         ...
 
+    def resolve_trade(self, trade_id: str, status: str, note: str = "") -> Trade:
+        """Reject or cancel: close a trade that is still pending, atomically.
+
+        Raises ``TradeConflict`` -- writing nothing -- if it is gone or was
+        resolved first. Who may do this is the API's question; whether it is
+        still possible is this one's.
+        """
+        ...
+
     def accept_trade(self, trade_id: str, recipient_uid: str) -> Trade:
         """Swap both cards and close the trade, atomically.
 
@@ -181,8 +205,8 @@ class MemoryStore:
         self._leagues: dict[str, League] = {}
         self._memberships: dict[str, Membership] = {}
         self._trades: dict[str, Trade] = {}
-        # Only accept_trade takes this. It is the one operation here
-        # that writes three documents which must move together.
+        # Taken by accept_trade and resolve_trade: the two operations that
+        # decide on a trade's status and then write, which must not interleave.
         self._lock = threading.Lock()
 
     def save_card(self, card: Card) -> None:
@@ -240,6 +264,12 @@ class MemoryStore:
             if uid in (t.proposer_uid, t.recipient_uid)
         ]
         return sorted(found, key=lambda t: t.created_at, reverse=True)
+
+    def resolve_trade(self, trade_id: str, status: str, note: str = "") -> Trade:
+        with self._lock:
+            done = _resolution(self._trades.get(trade_id), status, note)
+            self._trades[trade_id] = done
+            return done
 
     def accept_trade(self, trade_id: str, recipient_uid: str) -> Trade:
         # Firestore gets a transaction; here the equivalent is a lock plus
@@ -387,6 +417,21 @@ class FirestoreStore:
             for d in collection.where(filter=FieldFilter(field, "==", uid)).stream()
         ]
         return sorted(found, key=lambda t: t.created_at, reverse=True)
+
+    def resolve_trade(self, trade_id: str, status: str, note: str = "") -> Trade:
+        from google.cloud import firestore
+
+        trade_ref = self._db.collection("trades").document(trade_id)
+
+        @firestore.transactional
+        def close(transaction) -> Trade:
+            snapshot = trade_ref.get(transaction=transaction)
+            trade = Trade(**snapshot.to_dict()) if snapshot.exists else None
+            done = _resolution(trade, status, note)
+            transaction.set(trade_ref, asdict(done))
+            return done
+
+        return close(self._db.transaction())
 
     def accept_trade(self, trade_id: str, recipient_uid: str) -> Trade:
         """Three documents, one transaction: both cards and the trade itself.
