@@ -22,3 +22,6 @@ frontend/.env.local
 
 # Agent worktrees — working copies, never part of the repo.
 .claude/worktrees/
+
+# Firebase emulator logs
+*-debug.log
