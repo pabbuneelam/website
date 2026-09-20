@@ -262,7 +262,7 @@ class MemoryStore:
 
 
 class FirestoreStore:
-    """Firebase project questly-7f3a2.
+    """Firebase project slate-da17a.
 
         cards/{card_id}        one created player, id "{date}:{uid}"
         users/{uid}            one signed-in person

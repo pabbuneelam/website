@@ -162,7 +162,7 @@ beats behaving randomly.
 
 ```sh
 vercel env add SLATE_FIREBASE_PROJECT production
-base64 -i ~/.secrets/questly-sa.json | tr -d '\n' | vercel env add GOOGLE_APPLICATION_CREDENTIALS_B64 production
+base64 -i ~/.secrets/slate-da17a-sa.json | tr -d '\n' | vercel env add GOOGLE_APPLICATION_CREDENTIALS_B64 production
 
 tools/deploy.sh api        # -> slate-demo
 tools/deploy.sh ui         # -> slate-ui
@@ -180,8 +180,8 @@ no logs (#10). The script stages a copy outside the repo.
 ## Persistence
 
 ```sh
-export SLATE_FIREBASE_PROJECT=questly-7f3a2
-export GOOGLE_APPLICATION_CREDENTIALS=~/.secrets/questly-sa.json
+export SLATE_FIREBASE_PROJECT=slate-da17a
+export GOOGLE_APPLICATION_CREDENTIALS=~/.secrets/slate-da17a-sa.json
 ```
 
 ```
@@ -200,7 +200,7 @@ never move.
 
 ## Accounts
 
-Sign-in is Google, through Firebase Auth on the same `questly-7f3a2` project.
+Sign-in is Google, through Firebase Auth on the same `slate-da17a` project.
 The browser gets an ID token, sends it as `Authorization: Bearer <token>`, and
 `slate/auth.py` verifies it server-side. **The uid is the only identity
 anything is keyed on** — `creator` used to be a free-text box, so two people
@@ -245,7 +245,7 @@ web config identifies a project, it does not authorise anything. Verification
 uses the service-account credentials the store already loads, so no new
 secret is introduced.
 
-**Manual step, once per project:** Firebase console → `questly-7f3a2` →
+**Manual step, once per project:** Firebase console → `slate-da17a` →
 Build → Authentication → Sign-in method → Add new provider → **Google** →
 enable, set a support email, Save. Then Authentication → Settings →
 Authorized domains, and add any deploy domain (`localhost` is there by
@@ -323,7 +323,7 @@ equal `request.auth.uid` on create, messages can never be updated or deleted,
 and the max length is checked there rather than only in the input.
 
 ```sh
-firebase deploy --only firestore:rules --project questly-7f3a2
+firebase deploy --only firestore:rules --project slate-da17a
 ```
 
 Until those rules are live every listener fails with `permission-denied` — that

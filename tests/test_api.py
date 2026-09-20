@@ -245,7 +245,7 @@ def test_importing_the_app_never_constructs_a_store(tmp_path):
     result = subprocess.run(
         [sys.executable, "-c",
          "import slate.api as a; print('STORE', a.store)"],
-        env={"SLATE_FIREBASE_PROJECT": "questly-7f3a2",
+        env={"SLATE_FIREBASE_PROJECT": "slate-da17a",
              "PATH": os.environ.get("PATH", ""),
              "HOME": os.environ.get("HOME", "")},
         capture_output=True, text=True, timeout=60,

@@ -12,7 +12,7 @@ rules_version = '2';
 // denying client writes to `users` and `cards` costs the server nothing.
 //
 // Deploy (manually — nothing here deploys it for you):
-//   firebase deploy --only firestore:rules --project questly-7f3a2
+//   firebase deploy --only firestore:rules --project slate-da17a
 
 service cloud.firestore {
   match /databases/{database}/documents {
