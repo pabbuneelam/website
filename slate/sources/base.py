@@ -14,6 +14,9 @@ class NightData:
     date: str
     games: tuple[SlateGame, ...]
     boxscores: tuple[BoxScore, ...]
+    # Set when `date` has no data of its own and this is another night's
+    # players standing in for it. Holds the date the data really comes from.
+    sample_of: str | None = None
 
 
 class SlateSource(Protocol):

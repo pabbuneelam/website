@@ -112,11 +112,32 @@ class BuildIn(BaseModel):
     )
 
 
+# The night played when someone picks a date we hold no data for. Until live
+# ingestion exists this is the only night there is, so every other date shows
+# the same player pool instead of an empty page.
+SAMPLE_DATE = "2025-11-14"
+
+
 def _night(date: str):
+    """The night for `date`, or the sample night re-dated to it.
+
+    The stand-in keeps the requested date, so a card built on it is that
+    date's card (one per user per date) rather than an overwrite of the
+    sample night's. `sample_of` tells the caller it is not the real thing.
+    """
+    try:
+        datetime.strptime(date, "%Y-%m-%d")
+    except ValueError:
+        raise HTTPException(422, f"{date!r} is not a YYYY-MM-DD date") from None
     try:
         return source.load(date)
     except FileNotFoundError:
+        pass
+    try:
+        night = source.load(SAMPLE_DATE)
+    except FileNotFoundError:
         raise HTTPException(404, f"no slate for {date}") from None
+    return replace(night, date=date, sample_of=SAMPLE_DATE)
 
 
 @app.get("/attributes")
@@ -140,6 +161,7 @@ def get_slate(date: str):
     night = _night(date)
     return {
         "date": night.date,
+        "sample_of": night.sample_of,
         "slots": list(attributes.SLOTS),
         "games": [vars(g) for g in night.games],
         "players": [

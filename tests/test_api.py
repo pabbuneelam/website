@@ -69,8 +69,33 @@ def test_slate_shows_salaries_but_never_stats():
     assert not leaked & set(player)
 
 
-def test_unknown_date_is_a_404():
-    assert client.get("/slates/1999-01-01").status_code == 404
+def test_a_date_with_no_data_offers_the_sample_nights_players():
+    real = client.get(f"/slates/{DATE}").json()
+    other = client.get("/slates/2026-01-05").json()
+    assert other["date"] == "2026-01-05"
+    assert other["sample_of"] == DATE
+    assert other["players"] == real["players"]
+    assert real["sample_of"] is None
+
+
+def test_a_malformed_date_is_rejected_not_treated_as_a_sample():
+    assert client.get("/slates/not-a-date").status_code == 422
+    assert client.get("/slates/2026-13-40").status_code == 422
+
+
+def test_a_card_built_on_a_sample_date_belongs_to_that_date():
+    players = client.get("/slates/2026-01-05").json()["players"]
+    build = {
+        "selections": [
+            {"slot": slot, "player_id": p["player_id"]}
+            for slot, p in zip(attributes.SLOTS, players)
+        ]
+    }
+    card = client.post("/slates/2026-01-05/builds", json=build).json()
+    assert card["date"] == "2026-01-05"
+    assert card["card_id"].startswith("2026-01-05:")
+    # ...and did not overwrite the real night's card.
+    assert client.post(f"/slates/{DATE}/builds", json=build).json()["card_id"].startswith(DATE)
 
 
 def test_submitting_a_build_returns_a_card():

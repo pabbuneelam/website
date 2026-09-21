@@ -11,7 +11,7 @@ import League from './components/League'
 import Chat from './components/Chat'
 import { useAuth } from './useAuth'
 
-const DEFAULT_DATE = '2025-11-14' // the only date with fixture data today
+const DEFAULT_DATE = '2025-11-14' // the one night with real fixture data; other dates show its players
 
 // Three panels and no router. Adding one would mean a dependency, a build
 // config and real URLs for what is still a single screen with a sidebar's

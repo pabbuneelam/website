@@ -24,6 +24,8 @@ export interface SlatePlayer {
 
 export interface Slate {
   date: string
+  /** Set when `date` has no games of its own: the night these players are from. */
+  sample_of: string | null
   slots: string[]
   games: Game[]
   players: SlatePlayer[]
