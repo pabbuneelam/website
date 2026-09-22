@@ -216,6 +216,17 @@ def test_first_sign_in_stores_a_profile():
     assert profile["created_at"]
 
 
+def test_the_stored_profile_never_holds_the_email():
+    """users/{uid} is world-readable to signed-in users, so the email rides on
+    the caller's own token and never lands in the document."""
+    from slate import api
+
+    as_user("uid-new", "New Person")
+    client.post("/users/me")
+    assert api.get_store().user("uid-new").email is None
+    assert client.get("/users/me").json()["email"] == "uid-new@example.com"
+
+
 def test_signing_in_again_refreshes_the_profile_but_keeps_created_at():
     as_user("uid-new", "Old Name")
     first = client.post("/users/me").json()
