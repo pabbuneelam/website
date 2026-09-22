@@ -36,8 +36,8 @@ npm run dev                                    # http://localhost:5173
 The dev server proxies `/attributes`, `/slates`, `/cards`, `/users`, `/leagues`,
 `/trades`, `/health`
 straight to `127.0.0.1:8000` (see `frontend/vite.config.ts`) — no env vars
-needed locally. For a production build against a deployed backend, set
-`VITE_API_BASE` (see `frontend/.env.example`).
+needed. In production FastAPI serves the built SPA itself, so the API is
+always same-origin.
 
 Building a card requires signing in — see **Accounts**, below.
 
@@ -144,17 +144,17 @@ Nothing is paid for yet; everything runs on `slate/fixtures/2025-11-14.json`.
 
 ## Deployed
 
-**https://slate-demo-six.vercel.app** — `/docs` for the OpenAPI UI, `/health`
-for which store is live. This is Vercel project `slate-demo`, backed by
-Firestore. The SPA is a second project, `slate-ui`, built against it.
+**https://slate-demo-six.vercel.app** — the site; `/docs` for the OpenAPI UI,
+`/health` for which store is live.
 
-`slate-theta-two.vercel.app` is an older deploy of the same API with no
-database behind it (`/health` reports `MemoryStore`), so every write there
-503s. Do not point a frontend at it.
-
-Vercel resolves the entrypoint from `[tool.vercel] entrypoint = "slate.api:app"`
-in `pyproject.toml`. `vercel.json` trims tests and tooling but **must not
-exclude `slate/fixtures/`** — that JSON is runtime data.
+One Vercel project (`slate-demo`). Deploy with `tools/deploy.sh` from `main`
+— the CLI stalls when run inside the repo (#10), so the script stages a copy
+outside it. `vercel.json` builds the SPA and copies it into `slate/static/`,
+which `slate/api.py` mounts after every API route — so the UI, the API and
+sign-in share one origin and there is no CORS and no API base URL to
+configure. Vercel resolves the entrypoint from `[tool.vercel] entrypoint =
+"slate.api:app"` in `pyproject.toml`. `vercel.json` trims tests and tooling
+but **must not exclude `slate/fixtures/`** — that JSON is runtime data.
 
 Writes 503 without a durable store, deliberately: serverless instances are
 stateless, so a card written by one is invisible to the next. Failing loudly
@@ -164,8 +164,7 @@ beats behaving randomly.
 vercel env add SLATE_FIREBASE_PROJECT production
 base64 -i ~/.secrets/questly-sa.json | tr -d '\n' | vercel env add GOOGLE_APPLICATION_CREDENTIALS_B64 production
 
-tools/deploy.sh api        # -> slate-demo
-tools/deploy.sh ui         # -> slate-ui
+tools/deploy.sh            # -> slate-demo
 ```
 
 `GOOGLE_APPLICATION_CREDENTIALS_B64` is preferred: a raw service-account JSON

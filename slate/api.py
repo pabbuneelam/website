@@ -15,7 +15,6 @@ from dataclasses import replace
 from datetime import datetime, timezone
 
 from fastapi import Depends, FastAPI, Header, HTTPException
-from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
@@ -41,18 +40,6 @@ from .sources import FixtureSource
 from .store import MemoryStore, Store, TradeConflict, default_store
 
 app = FastAPI(title=f"{APP_NAME} engine", version="0.2.0")
-
-# The SPA is a separate static app on its own origin, so it needs CORS to call
-# this API directly. A wildcard origin is still safe with accounts in play:
-# identity rides in an Authorization header, not a cookie, so a hostile page
-# cannot make the browser attach it. `allow_credentials` must stay off for
-# that to remain true.
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_methods=["GET", "POST"],
-    allow_headers=["*"],
-)
 
 source = FixtureSource()
 
