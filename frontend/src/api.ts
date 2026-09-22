@@ -9,10 +9,8 @@ import type {
   UserProfile,
 } from './types'
 
-// Empty by default: dev proxies (see vite.config.ts) forward the API's own
-// root-level paths straight to uvicorn. Set VITE_API_BASE to call a deployed
-// backend directly instead (see .env.example).
-const API_BASE = import.meta.env.VITE_API_BASE ?? ''
+// Same origin, always: the dev server proxies the API's paths to uvicorn (see
+// vite.config.ts), and the deploy serves the built SPA from FastAPI itself.
 
 export class ApiError extends Error {
   status: number
@@ -34,7 +32,7 @@ export function setTokenProvider(provider: () => Promise<string | null>) {
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const token = await tokenProvider()
-  const res = await fetch(`${API_BASE}${path}`, {
+  const res = await fetch(path, {
     ...init,
     headers: {
       'Content-Type': 'application/json',

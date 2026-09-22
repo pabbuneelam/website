@@ -272,9 +272,3 @@ def test_get_store_is_built_once_and_reused(monkeypatch):
     monkeypatch.delenv("SLATE_FIREBASE_PROJECT", raising=False)
     assert api.get_store() is api.get_store()
 
-
-def test_cross_origin_requests_are_allowed():
-    """The SPA and this API may end up on different origins; without CORS the
-    browser blocks every call and the page looks broken for no visible reason."""
-    response = client.get("/attributes", headers={"Origin": "https://example.com"})
-    assert response.headers.get("access-control-allow-origin") == "*"

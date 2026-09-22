@@ -3,7 +3,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "test": "playwright test",
+    "test": "firebase emulators:exec --only auth,firestore --project demo-slate \"playwright test\"",
     "install-browsers": "playwright install --with-deps chromium"
   },
   "devDependencies": {
