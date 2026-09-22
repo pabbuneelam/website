@@ -16,6 +16,7 @@ from datetime import datetime, timezone
 
 from fastapi import Depends, FastAPI, Header, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
 from . import attributes
@@ -589,3 +590,13 @@ def health():
         "firebase_project": os.environ.get("SLATE_FIREBASE_PROJECT"),
         "serverless": ON_SERVERLESS,
     }
+
+
+# The built frontend, if the deploy put one next to this file (vercel.json copies
+# frontend/dist here). Mounted last so every API route above wins; a plain `/`
+# then serves the SPA. It lives inside the package rather than in `public/`
+# because a FastAPI deploy on Vercel bundles this directory but does not serve
+# `public/` from the CDN. Absent in local dev, where Vite serves the UI.
+_STATIC = os.path.join(os.path.dirname(__file__), "static")
+if os.path.isdir(_STATIC):
+    app.mount("/", StaticFiles(directory=_STATIC, html=True), name="ui")

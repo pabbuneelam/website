@@ -1,7 +1,6 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
-  "buildCommand": "cd frontend && npm install && npm run build",
-  "outputDirectory": "frontend/dist",
+  "buildCommand": "cd frontend && npm install && npm run build && rm -rf ../slate/static && cp -R dist ../slate/static",
   "functions": {
     "slate/api.py": {
       "excludeFiles": "{tests/**,tools/**,.venv/**,docs/**}"
