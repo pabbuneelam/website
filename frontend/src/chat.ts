@@ -103,7 +103,7 @@ export async function listDirectory(excludeUid: string): Promise<ChatUser[]> {
       return {
         uid: d.id,
         // Stored by slate/store.py, hence snake_case.
-        displayName: (data.display_name as string) || (data.email as string) || d.id.slice(0, 8),
+        displayName: (data.display_name as string) || d.id.slice(0, 8),
         photoURL: (data.photo_url as string | null) ?? null,
       }
     })

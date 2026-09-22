@@ -202,27 +202,29 @@ def upsert_profile(user: AuthUser = Depends(current_user)):
     """Record the signed-in user. Called by the frontend when auth state
     changes; `created_at` is stamped on the first call and never rewritten."""
     _require_durable_store()
-    return get_store().save_user(
+    # No email in the stored document: users/{uid} is readable by every
+    # signed-in user (the chat directory needs it), and sign-in is open to any
+    # Google account. The caller still gets their own back, from their token.
+    stored = get_store().save_user(
         UserProfile(
             uid=user.uid,
             display_name=user.display_name,
-            email=user.email,
             photo_url=user.photo_url,
         )
     )
+    return replace(stored, email=user.email)
 
 
 @app.get("/users/me")
 def get_profile(user: AuthUser = Depends(current_user)):
     """The stored profile, or the token's own claims if nothing is stored yet."""
     _require_durable_store()
-    stored = get_store().user(user.uid)
-    return stored or UserProfile(
+    stored = get_store().user(user.uid) or UserProfile(
         uid=user.uid,
         display_name=user.display_name,
-        email=user.email,
         photo_url=user.photo_url,
     )
+    return replace(stored, email=user.email)
 
 
 # Declared before /cards/{uid} on purpose -- otherwise "me" matches as a uid.
