@@ -265,9 +265,16 @@ What it does:
    picks a player — at both a desktop (1440×900) and a mobile (390×844)
    viewport. It screenshots every meaningful state, including one dropdown
    left **open** (the state that caught the real bug), into
-   `tests/e2e/screenshots/`. It stops at the filled form: building a card and
-   the collection need a Google sign-in, which a headless browser cannot do
-   (#18).
+   `tests/e2e/screenshots/`. Then it logs in, builds a card and opens the
+   collection.
+
+   A headless browser cannot complete Google OAuth, so the run happens
+   entirely on the **Firebase Auth and Firestore emulators**: `npm test` wraps
+   Playwright in `firebase emulators:exec`, Playwright starts uvicorn and Vite
+   itself, and `VITE_FIREBASE_EMULATOR` makes the ordinary Log in button sign a
+   fixed QA identity into the Auth emulator. The API verifies that token and
+   stores the card through the real `FirestoreStore`, against the emulator.
+   Nothing in a run can reach a real project. Needs the Firebase CLI and Java.
 2. `review.py` sends those screenshots to Claude and asks specifically for
    aesthetic/layout defects — overlap, clipping, contrast, misalignment,
    z-index/stacking bugs, broken responsive behavior — not existence checks.
@@ -281,15 +288,8 @@ Run it:
 .venv/bin/pip install -e ".[e2e]"
 cd tests/e2e && npm install && npx playwright install --with-deps chromium
 
-# terminal 1
-.venv/bin/uvicorn slate.api:app --port 8000
-
-# terminal 2
-cd frontend && npm run dev
-
-# terminal 3
 cd tests/e2e
-npx playwright test                # writes screenshots/
+npm test                           # emulators + both servers + capture; writes screenshots/
 ANTHROPIC_API_KEY=sk-... ../../.venv/bin/python review.py
 ```
 
