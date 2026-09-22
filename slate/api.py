@@ -37,7 +37,7 @@ from .models import (
 )
 from .name import APP_NAME
 from .score import NightRater
-from .sources import FixtureSource
+from .sources import BallDontLieSource, FixtureSource
 from .store import MemoryStore, Store, TradeConflict, default_store
 
 app = FastAPI(title=f"{APP_NAME} engine", version="0.2.0")
@@ -54,7 +54,16 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-source = FixtureSource()
+def _default_source() -> FixtureSource | BallDontLieSource:
+    # No credential discovery or network I/O here (unlike the Firestore
+    # client below), so building this at import time is safe.
+    api_key = os.environ.get("BALLDONTLIE_API_KEY")
+    if not api_key:
+        return FixtureSource()
+    return BallDontLieSource(api_key, tier=os.environ.get("BALLDONTLIE_TIER", "allstar"))
+
+
+source = _default_source()
 
 # Built on first use, never at import. A Firestore client constructed at module
 # scope runs credential discovery while the platform is merely importing this
@@ -615,6 +624,7 @@ def health():
         "store": type(live).__name__,
         "durable": not isinstance(live, MemoryStore),
         "firebase_project": os.environ.get("SLATE_FIREBASE_PROJECT"),
+        "source": type(source).__name__,
         "serverless": ON_SERVERLESS,
         "dev_auth": os.environ.get("SLATE_DEV_AUTH") == "1",
     }
