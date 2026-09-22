@@ -12,9 +12,8 @@ function shot(project: string, step: string) {
   return path.join(SCREENSHOT_DIR, `${project}-${step}.png`)
 }
 
-test('build a card end to end and browse the collection', async ({ page }, testInfo) => {
+test('fill every slot, signed out', async ({ page }, testInfo) => {
   const project = testInfo.project.name
-  const creator = `qa-${Date.now()}`
 
   await page.goto('/')
   await expect(page.getByRole('heading', { name: 'Slate' })).toBeVisible()
@@ -48,14 +47,11 @@ test('build a card end to end and browse the collection', async ({ page }, testI
     await picker.locator('.dropdown__option:not(.dropdown__option--empty)').first().click()
   }
 
-  await page.getByLabel('Creator name').fill(creator)
   await page.screenshot({ path: shot(project, '03-all-slots-filled'), fullPage: true })
 
-  await page.getByRole('button', { name: 'Build card' }).click()
-  await expect(page.locator('.card-result')).toBeVisible({ timeout: 10_000 })
-  await page.screenshot({ path: shot(project, '04-card-result'), fullPage: true })
-
-  await page.getByRole('button', { name: 'My Collection' }).click()
-  await expect(page.locator('.collection')).toBeVisible()
-  await page.screenshot({ path: shot(project, '05-my-collection'), fullPage: true })
+  // Stops here on purpose. Building a card and opening the collection need a
+  // signed-in user, and a headless browser cannot complete Google OAuth. What
+  // a signed-out visitor must see instead is the prompt, not a live button.
+  await expect(page.getByRole('button', { name: 'Build card' })).toBeDisabled()
+  await expect(page.getByText('log in to build a card')).toBeVisible()
 })
